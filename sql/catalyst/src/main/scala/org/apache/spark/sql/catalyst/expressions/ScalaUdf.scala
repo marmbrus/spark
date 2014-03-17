@@ -31,6 +31,7 @@ case class ScalaUdf(function: AnyRef, dataType: DataType, children: Seq[Expressi
 
   override def apply(input: Row): Any = {
     children.size match {
+      case 0 => function.asInstanceOf[() => Any]()
       case 1 => function.asInstanceOf[(Any) => Any](children(0).apply(input))
       case 2 =>
         function.asInstanceOf[(Any, Any) => Any](

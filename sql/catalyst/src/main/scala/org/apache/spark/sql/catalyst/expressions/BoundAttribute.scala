@@ -49,12 +49,15 @@ case class BoundReference(ordinal: Int, baseReference: Attribute)
   override def apply(input: Row): Any = input(ordinal)
 }
 
+trait NoBind
+
 class BindReferences[TreeNode <: QueryPlan[TreeNode]] extends Rule[TreeNode] {
   import BindReferences._
 
   def apply(plan: TreeNode): TreeNode = {
     plan.transform {
       case leafNode if leafNode.children.isEmpty => leafNode
+      case nb: NoBind => nb.asInstanceOf[TreeNode]
       case unaryNode if unaryNode.children.size == 1 => unaryNode.transformExpressions { case e =>
         bindReference(e, unaryNode.children.head.output)
       }

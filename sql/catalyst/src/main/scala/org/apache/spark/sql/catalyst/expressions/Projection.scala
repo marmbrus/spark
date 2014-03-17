@@ -23,7 +23,7 @@ package expressions
  * new row. If the schema of the input row is specified, then the given expression will be bound to
  * that schema.
  */
-class Projection(expressions: Seq[Expression]) extends (Row => Row) {
+class InterpretedProjection(expressions: Seq[Expression]) extends (Row => Row) {
   def this(expressions: Seq[Expression], inputSchema: Seq[Attribute]) =
     this(expressions.map(BindReferences.bindReference(_, inputSchema)))
 
@@ -40,7 +40,7 @@ class Projection(expressions: Seq[Expression]) extends (Row => Row) {
 }
 
 /**
- * Converts a [[Row]] to another Row given a sequence of expression that define each column of th
+ * Converts a [[Row]] to another Row given a sequence of expression that define each column of the
  * new row. If the schema of the input row is specified, then the given expression will be bound to
  * that schema.
  *
@@ -48,13 +48,18 @@ class Projection(expressions: Seq[Expression]) extends (Row => Row) {
  * each time an input row is added.  This significatly reduces the cost of calcuating the
  * projection, but means that it is not safe
  */
-case class MutableProjection(expressions: Seq[Expression]) extends (Row => Row) {
+case class InterpretedMutableProjection(expressions: Seq[Expression]) extends MutableProjection {
   def this(expressions: Seq[Expression], inputSchema: Seq[Attribute]) =
     this(expressions.map(BindReferences.bindReference(_, inputSchema)))
 
   private[this] val exprArray = expressions.toArray
-  private[this] val mutableRow = new GenericMutableRow(exprArray.size)
+  private[this] var mutableRow: MutableRow = new GenericMutableRow(exprArray.size)
   def currentValue: Row = mutableRow
+
+  def target(row: MutableRow): MutableProjection = {
+    mutableRow = row
+    this
+  }
 
   def apply(input: Row): Row = {
     var i = 0

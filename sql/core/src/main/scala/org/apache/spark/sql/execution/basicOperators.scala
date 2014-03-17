@@ -32,8 +32,10 @@ import catalyst.ScalaReflection
 case class Project(projectList: Seq[NamedExpression], child: SparkPlan) extends UnaryNode {
   def output = projectList.map(_.toAttribute)
 
+  @transient lazy val buildProjection = GenerateMutableProjection(projectList)
+
   def execute() = child.execute().mapPartitions { iter =>
-    @transient val resuableProjection = new MutableProjection(projectList)
+    val resuableProjection = buildProjection()
     iter.map(resuableProjection)
   }
 }
@@ -41,8 +43,10 @@ case class Project(projectList: Seq[NamedExpression], child: SparkPlan) extends 
 case class Filter(condition: Expression, child: SparkPlan) extends UnaryNode {
   def output = child.output
 
+  @transient lazy val conditionEvaluator = GenerateCondition(condition)
+
   def execute() = child.execute().mapPartitions { iter =>
-    iter.filter(condition.apply(_).asInstanceOf[Boolean])
+    iter.filter(conditionEvaluator)
   }
 }
 
@@ -84,6 +88,7 @@ case class TopK(limit: Int, sortOrder: Seq[SortOrder], child: SparkPlan)
   @transient
   lazy val ordering = new RowOrdering(sortOrder)
 
+  // TODO: Is this copying for no reason?
   override def executeCollect() = child.execute().map(_.copy()).takeOrdered(limit)(ordering)
 
   // TODO: Terminal split should be implemented differently from non-terminal split.

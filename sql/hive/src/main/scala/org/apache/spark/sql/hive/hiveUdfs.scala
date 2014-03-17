@@ -335,14 +335,14 @@ case class HiveGenericUdaf(
 
   type UDFType = AbstractGenericUDAFResolver
 
-  protected lazy val resolver: AbstractGenericUDAFResolver = createFunction(name)
+  @transient protected lazy val resolver: AbstractGenericUDAFResolver = createFunction(name)
 
-  protected lazy val objectInspector  = {
+  @transient protected lazy val objectInspector  = {
     resolver.getEvaluator(children.map(_.dataType.toTypeInfo).toArray)
       .init(GenericUDAFEvaluator.Mode.COMPLETE, inspectors.toArray)
   }
 
-  protected lazy val inspectors = children.map(_.dataType).map(toInspector)
+  @transient protected lazy val inspectors = children.map(_.dataType).map(toInspector)
 
   def dataType: DataType = inspectorToDataType(objectInspector)
 
@@ -404,7 +404,7 @@ case class HiveGenericUdtf(
   override def apply(input: Row): TraversableOnce[Row] = {
     outputInspectors // Make sure initialized.
 
-    val inputProjection = new Projection(children)
+    val inputProjection = new InterpretedProjection(children)
     val collector = new UDTFCollector
     function.setCollector(collector)
 
@@ -458,7 +458,7 @@ case class HiveUdafFunction(
   override def apply(input: Row): Any = unwrapData(function.evaluate(buffer), returnInspector)
 
   @transient
-  val inputProjection = new Projection(exprs)
+  val inputProjection = new InterpretedProjection(exprs)
 
   def update(input: Row): Unit = {
     val inputs = inputProjection(input).asInstanceOf[Seq[AnyRef]].toArray

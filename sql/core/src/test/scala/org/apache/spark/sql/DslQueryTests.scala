@@ -93,11 +93,18 @@ class DslQueryTest extends FunSuite {
             |$plan
             |== Physical Plan ==
             |${plan.executedPlan}
-            |== Exception ==
-            |$e
-          """.stripMargin)
+          """.stripMargin, e)
     }
-    assert(prepareAnswer(convertedAnswer) === prepareAnswer(sparkAnswer))
+
+    if(prepareAnswer(convertedAnswer) != prepareAnswer(sparkAnswer))
+      fail(
+        s"""
+              |Wrong answer thrown while executing query:
+              |$plan
+              |== Physical Plan ==
+              |${plan.executedPlan}
+              |${prepareAnswer(convertedAnswer)} != ${prepareAnswer(sparkAnswer)}
+            """.stripMargin)
   }
 }
 

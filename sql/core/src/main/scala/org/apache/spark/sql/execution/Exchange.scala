@@ -40,6 +40,7 @@ class SparkSqlSerializer(conf: SparkConf) extends KryoSerializer(conf) {
     kryo.register(classOf[MutablePair[_,_]])
     kryo.register(classOf[Array[Any]])
     kryo.register(classOf[org.apache.spark.sql.catalyst.expressions.GenericRow])
+    kryo.register(classOf[org.apache.spark.sql.catalyst.expressions.JoinedRow])
     kryo.register(classOf[org.apache.spark.sql.catalyst.expressions.GenericMutableRow])
     kryo.register(classOf[scala.collection.mutable.ArrayBuffer[_]])
     kryo.register(classOf[scala.math.BigDecimal], new BigDecimalSerializer)
@@ -69,9 +70,10 @@ case class Exchange(newPartitioning: Partitioning, child: SparkPlan) extends Una
   def execute() = attachTree(this , "execute") {
     newPartitioning match {
       case HashPartitioning(expressions, numPartitions) => {
+
         // TODO: Eliminate redundant expressions in grouping key and value.
         val rdd = child.execute().mapPartitions { iter =>
-          val hashExpressions = new MutableProjection(expressions)
+          @transient lazy val hashExpressions = GenerateMutableProjection(expressions)()
           val mutablePair = new MutablePair[Row, Row]()
           iter.map(r => mutablePair.update(hashExpressions(r), r))
         }

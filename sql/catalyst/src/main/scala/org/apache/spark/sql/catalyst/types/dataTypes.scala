@@ -19,6 +19,8 @@ package org.apache.spark.sql
 package catalyst
 package types
 
+import scala.reflect.runtime.universe._
+
 import expressions.Expression
 
 abstract class DataType {
@@ -31,14 +33,23 @@ abstract class DataType {
 
 case object NullType extends DataType
 
+object NativeType {
+  def all = Seq(
+    IntegerType, BooleanType, LongType, DoubleType, FloatType, ShortType, ByteType, StringType)
+
+  def unapply(dt: DataType): Boolean = all.contains(dt)
+}
+
 abstract class NativeType extends DataType {
   type JvmType
   val ordering: Ordering[JvmType]
+  val tag: TypeTag[JvmType]
 }
 
 case object StringType extends NativeType {
   type JvmType = String
   val ordering = implicitly[Ordering[JvmType]]
+  @transient lazy val tag = typeTag[JvmType]
 }
 case object BinaryType extends DataType {
   type JvmType = Array[Byte]
@@ -46,6 +57,7 @@ case object BinaryType extends DataType {
 case object BooleanType extends NativeType {
   type JvmType = Boolean
   val ordering = implicitly[Ordering[JvmType]]
+  @transient lazy val tag = typeTag[JvmType]
 }
 
 abstract class NumericType extends NativeType {
@@ -74,6 +86,7 @@ case object LongType extends IntegralType {
   val numeric = implicitly[Numeric[Long]]
   val integral = implicitly[Integral[Long]]
   val ordering = implicitly[Ordering[JvmType]]
+  @transient lazy val tag = typeTag[JvmType]
 }
 
 case object IntegerType extends IntegralType {
@@ -81,6 +94,7 @@ case object IntegerType extends IntegralType {
   val numeric = implicitly[Numeric[Int]]
   val integral = implicitly[Integral[Int]]
   val ordering = implicitly[Ordering[JvmType]]
+  @transient lazy val tag = typeTag[JvmType]
 }
 
 case object ShortType extends IntegralType {
@@ -88,6 +102,7 @@ case object ShortType extends IntegralType {
   val numeric = implicitly[Numeric[Short]]
   val integral = implicitly[Integral[Short]]
   val ordering = implicitly[Ordering[JvmType]]
+  @transient lazy val tag = typeTag[JvmType]
 }
 
 case object ByteType extends IntegralType {
@@ -95,6 +110,7 @@ case object ByteType extends IntegralType {
   val numeric = implicitly[Numeric[Byte]]
   val integral = implicitly[Integral[Byte]]
   val ordering = implicitly[Ordering[JvmType]]
+  @transient lazy val tag = typeTag[JvmType]
 }
 
 /** Matcher for any expressions that evaluate to [[FractionalType]]s */
@@ -113,6 +129,7 @@ case object DecimalType extends FractionalType {
   val numeric = implicitly[Numeric[BigDecimal]]
   val fractional = implicitly[Fractional[BigDecimal]]
   val ordering = implicitly[Ordering[JvmType]]
+  @transient lazy val tag = typeTag[JvmType]
 }
 
 case object DoubleType extends FractionalType {
@@ -120,6 +137,7 @@ case object DoubleType extends FractionalType {
   val numeric = implicitly[Numeric[Double]]
   val fractional = implicitly[Fractional[Double]]
   val ordering = implicitly[Ordering[JvmType]]
+  @transient lazy val tag = typeTag[JvmType]
 }
 
 case object FloatType extends FractionalType {
@@ -127,6 +145,7 @@ case object FloatType extends FractionalType {
   val numeric = implicitly[Numeric[Float]]
   val fractional = implicitly[Fractional[Float]]
   val ordering = implicitly[Ordering[JvmType]]
+  @transient lazy val tag = typeTag[JvmType]
 }
 
 case class ArrayType(elementType: DataType) extends DataType

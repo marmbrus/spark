@@ -55,8 +55,11 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
           val leftKeys = joinKeys.map(_._1)
           val rightKeys = joinKeys.map(_._2)
 
-          val joinOp = execution.SparkEquiInnerJoin(
-            leftKeys, rightKeys, planLater(left), planLater(right))
+          // TODO: In its own rule...
+          // TODO: Abstract join key calculation...
+          // TODO: Pick the build side at runtime?
+          val joinOp = execution.HashJoin(
+            leftKeys, rightKeys, BuildRight, planLater(left), planLater(right))
 
           // Make sure other conditions are met if present.
           if (otherPredicates.nonEmpty) {
@@ -156,12 +159,6 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
   protected lazy val singleRowRdd =
     sparkContext.parallelize(Seq(new GenericRow(Array[Any]()): Row), 1)
 
-  def convertToCatalyst(a: Any): Any = a match {
-    case s: Seq[Any] => s.map(convertToCatalyst)
-    case p: Product => new GenericRow(p.productIterator.map(convertToCatalyst).toArray)
-    case other => other
-  }
-
   object TopK extends Strategy {
     def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
       case logical.StopAfter(IntegerLiteral(limit), logical.Sort(order, child)) =>
@@ -202,10 +199,9 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
       case logical.Sample(fraction, withReplacement, seed, child) =>
         execution.Sample(fraction, withReplacement, seed, planLater(child)) :: Nil
       case logical.LocalRelation(output, data) =>
-        val dataAsRdd =
-          sparkContext.parallelize(data.map(r =>
-            new GenericRow(r.productIterator.map(convertToCatalyst).toArray): Row))
-        execution.ExistingRdd(output, dataAsRdd) :: Nil
+        ExistingRdd(
+          output,
+          ExistingRdd.productToRowRdd(sparkContext.parallelize(data, numPartitions))) :: Nil
       case logical.StopAfter(IntegerLiteral(limit), child) =>
         execution.StopAfter(limit, planLater(child))(sparkContext) :: Nil
       case Unions(unionChildren) =>
