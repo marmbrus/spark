@@ -32,7 +32,7 @@ import sqlContext._
 One type of table that is supported by Spark SQL is an RDD of Scala case classes.  The case class
 defines the schema of the table.  The names of the arguments to the case class are read using
 reflection and become the names of the columns. Case classes can also be nested or contain complex
-types like Seqences or Arrays. Such an RDD can then be registered as a table and used in subsequent SQL
+types like Sequences or Arrays. Such an RDD can then be registered as a table and used in subsequent SQL
 statements.
 
 {% highlight scala %}
