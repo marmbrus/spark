@@ -26,43 +26,43 @@ import dsl._
 import dsl.expressions._
 
 
+abstract class ExprEval(exprs: Array[Expression]) {
+  type Execution = (Row => Row)
+
+  def engine: Execution
+
+  private val compare: PartialFunction[(Int, (Boolean, Any), Row), Boolean] = {
+    case (idx, (false, field), row) => {
+      (row.isNullAt(idx) == false) && (row.apply(idx) == field)
+    }
+    case (idx, (true, _), row) => {
+      row.isNullAt(idx)
+    }
+  }
+
+  def verify(expected: Array[(Boolean, Any)], result: Row) {
+    Seq.tabulate(expected.size) { i =>
+      assert(compare.lift(i, expected(i), result).get)
+    }
+  }
+
+  def verify(expected: Array[Array[(Boolean, Any)]], inputs: Array[Row]) {
+    val result = inputs.map(engine.apply(_))
+
+    expected.zip(result).foreach { case (expectedRow, row) => verify(expectedRow, row) }
+  }
+}
+
+case class CGExprEval(exprs: Array[Expression]) extends ExprEval(exprs) {
+  override def engine: Execution = GenerateProjection(exprs)
+}
+
+case class InterpretEngine(exprs: Array[Expression]) extends ExprEval(exprs) {
+  override def engine: Execution = new InterpretedProjection(exprs)
+}
+
 class ExpressionEvaluationSuite extends FunSuite {
-  abstract class ExprEval(exprs: Array[Expression]) {
-    type Execution = (Row => Row)
-
-    def engine: Execution
-
-    private val compare: PartialFunction[(Int, (Boolean, Any), Row), Boolean] = {
-      case (idx, (false, field), row) => {
-        (row.isNullAt(idx) == false) && (row.apply(idx) == field)
-      }
-      case (idx, (true, _), row) => {
-        row.isNullAt(idx)
-      }
-    }
-
-    def verify(expected: Array[(Boolean, Any)], result: Row) {
-      Seq.tabulate(expected.size) { i =>
-        assert(compare.lift(i, expected(i), result).get)
-      }
-    }
-
-    def verify(expected: Array[Array[(Boolean, Any)]], inputs: Array[Row]) {
-      val result = inputs.map(engine.apply(_))
-
-      expected.zip(result).foreach { case (expectedRow, row) => verify(expectedRow, row) }
-    }
-  }
-
-  case class CGExprEval(exprs: Array[Expression]) extends ExprEval(exprs) {
-    override def engine: Execution = GenerateProjection(exprs)
-  }
-
-  case class InterpretEngine(exprs: Array[Expression]) extends ExprEval(exprs) {
-    override def engine: Execution = new InterpretedProjection(exprs)
-  }
-
-  val data = Array.fill[Row](5)(new GenericRow(Array(1, null, 1.0, true, 4, 5)))
+  val data = Array.fill[Row](5)(new GenericRow(Array(1, null, 1.0, true, 4, 5, null, "abcccd")))
 
   // TODO add to DSL
   val c1 = BoundReference(0, AttributeReference("a", IntegerType)())
@@ -71,6 +71,8 @@ class ExpressionEvaluationSuite extends FunSuite {
   val c4 = BoundReference(3, AttributeReference("d", BooleanType)())
   val c5 = BoundReference(4, AttributeReference("e", IntegerType)())
   val c6 = BoundReference(5, AttributeReference("f", IntegerType)())
+  val c7 = BoundReference(6, AttributeReference("g", StringType)())
+  val c8 = BoundReference(7, AttributeReference("h", StringType)())
 
   test("simple") {
     val generator =
@@ -139,6 +141,31 @@ class ExpressionEvaluationSuite extends FunSuite {
         (false, 1),
         (false, -1)))
 
+    verify(exprs, expecteds, data)
+  }
+
+  test("string like / rlike") {
+    val exprs = Array[Expression](
+      Like(c7, Literal("a", StringType)),
+      Like(c7, Literal(null, StringType)),
+      Like(c8, Literal(null, StringType)),
+      Like(c8, Literal("a_c", StringType)),
+      Like(c8, Literal("a%c", StringType)),
+      RLike(c7, Literal("a+", StringType)),
+      RLike(c7, Literal(null, StringType)),
+      RLike(c8, Literal(null, StringType)),
+      RLike(c8, Literal("a%c", StringType))
+    )
+
+    val expecteds = Array.fill(data.length)(Array[(Boolean, Any)](
+      (true, false),
+      (true, false),
+      (true, false),
+      (false, true),
+      (false, true),
+      (true, false),
+      (true, false),
+      (true, true)))
     verify(exprs, expecteds, data)
   }
 

@@ -128,22 +128,11 @@ class CodeGenerator extends Logging {
               ${getColumn(inputTuple, b.dataType, ordinal)}
          """.children
 
-      case expressions.Literal(value: String, dataType) =>
+      case expressions.Literal(value, dataType) =>
         q"""
           val $nullTerm = ${value == null}
-          val $primitiveTerm: ${termForType(dataType)} = $value
+          val $primitiveTerm: ${termForType(dataType)} = ${value.toString}
          """.children
-      case expressions.Literal(value: Int, dataType) =>
-        q"""
-          val $nullTerm = ${value == null}
-          val $primitiveTerm: ${termForType(dataType)} = $value
-         """.children
-      case expressions.Literal(value: Long, dataType) =>
-        q"""
-          val $nullTerm = ${value == null}
-          val $primitiveTerm: ${termForType(dataType)} = $value
-         """.children
-
       case Cast(e, StringType) =>
         val eval = expressionEvaluator(e)
         eval.code ++
