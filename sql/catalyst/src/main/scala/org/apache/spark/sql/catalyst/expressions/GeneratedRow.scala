@@ -188,19 +188,55 @@ class CodeGenerator extends Logging {
             $primitiveTerm = true
           }
          """.children
+      case Or(e1, e2) =>
+        val eval1 = expressionEvaluator(e1)
+        val eval2 = expressionEvaluator(e2)
 
+        eval1.code ++ eval2.code ++
+        q"""
+          var $nullTerm = false
+          var $primitiveTerm: ${termForType(BooleanType)} = false
+
+          if ((!${eval1.nullTerm} && ${eval1.primitiveTerm}) ||
+              (!${eval2.nullTerm} && ${eval2.primitiveTerm})) {
+            $nullTerm = false
+            $primitiveTerm = true
+          } else if (${eval1.nullTerm} || ${eval2.nullTerm} ) {
+            $nullTerm = true
+          } else {
+            $nullTerm = false
+            $primitiveTerm = false
+          }
+         """.children
 
       case Add(e1, e2) =>      (e1, e2) evaluate { case (eval1, eval2) => q"$eval1 + $eval2" }
       case Subtract(e1, e2) => (e1, e2) evaluate { case (eval1, eval2) => q"$eval1 - $eval2" }
       case Multiply(e1, e2) => (e1, e2) evaluate { case (eval1, eval2) => q"$eval1 * $eval2" }
       case Divide(e1, e2) =>   (e1, e2) evaluate { case (eval1, eval2) => q"$eval1 / $eval2" }
+      case Remainder(e1, e2) =>(e1, e2) evaluate { case (eval1, eval2) => q"$eval1 % $eval2" }
+      
+      case UnaryMinus(e) =>
+        val eval = expressionEvaluator(e)
+        q"""
+          ..${eval.code}
+          val $nullTerm = ${eval.nullTerm}
+          val $primitiveTerm: ${termForType(e.dataType)} = -${eval.primitiveTerm}
+         """.children
 
       case IsNotNull(e) =>
         val eval = expressionEvaluator(e)
         q"""
           ..${eval.code}
           var $nullTerm = false
-          var $primitiveTerm: ${termForType(BooleanType)} = !${eval.nullTerm}
+          var $primitiveTerm: ${termForType(BooleanType)} = ${eval.nullTerm}.unary_!
+        """.children
+
+      case IsNull(e) =>
+        val eval = expressionEvaluator(e)
+        q"""
+          ..${eval.code}
+          var $nullTerm = false
+          var $primitiveTerm: ${termForType(BooleanType)} = ${eval.nullTerm}
         """.children
 
       case c @ Coalesce(children) =>
@@ -220,6 +256,17 @@ class CodeGenerator extends Logging {
             }
            """
         }
+
+      case Not(e) =>
+        val eval = expressionEvaluator(e)
+        q"""
+          ..${eval.code}
+          var $nullTerm = ${eval.nullTerm}
+          var $primitiveTerm: ${termForType(BooleanType)} = ${eval.primitiveTerm}.unary_!
+        """.children
+        
+      // TODO transform the In to If
+//      case In(v, list) =>
 
       case i @ expressions.If(condition, trueValue, falseValue) =>
         val condEval = expressionEvaluator(condition)
