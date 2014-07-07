@@ -310,7 +310,9 @@ object SparkBuild extends Build {
     },
     publishMavenStyle in MavenCompile := true,
     publishLocal in MavenCompile <<= publishTask(publishLocalConfiguration in MavenCompile, deliverLocal),
-    publishLocalBoth <<= Seq(publishLocal in MavenCompile, publishLocal).dependOn
+    publishLocalBoth <<= Seq(publishLocal in MavenCompile, publishLocal).dependOn,
+    libraryDependencies += compilerPlugin("com.typesafe.genjavadoc" %%
+      "genjavadoc-plugin" % "0.8" cross CrossVersion.full)
   ) ++ net.virtualvoid.sbt.graph.Plugin.graphSettings ++ ScalaStyleSettings ++ genjavadocSettings
 
   val akkaVersion = "2.2.3-shaded-protobuf"
@@ -496,7 +498,8 @@ object SparkBuild extends Build {
     // this non-deterministically.  TODO: FIX THIS.
     parallelExecution in Test := false,
     libraryDependencies ++= Seq(
-      "com.typesafe" %% "scalalogging-slf4j" % "1.0.1"
+      "com.typesafe" %% "scalalogging-slf4j" % "1.0.1",
+      "records" %% "core" % "0.1-SNAPSHOT"
     )
   )
 
@@ -507,6 +510,9 @@ object SparkBuild extends Build {
       "com.twitter"                  % "parquet-hadoop"             % parquetVersion,
       "com.fasterxml.jackson.core"   % "jackson-databind"           % "2.3.0" // json4s-jackson 3.2.6 requires jackson-databind 2.3.0.
     ),
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.0.1" cross CrossVersion.full),
+    libraryDependencies <+= scalaVersion(v => "org.scala-lang"  % "scala-compiler" % v ),
+    libraryDependencies += "org.scalamacros" %% "quasiquotes" % "2.0.1",
     initialCommands in console :=
       """
         |import org.apache.spark.sql.catalyst.analysis._

@@ -52,7 +52,8 @@ class SQLContext(@transient val sparkContext: SparkContext)
   extends Logging
   with SQLConf
   with ExpressionConversions
-  with Serializable {
+  with Serializable
+  with TypedSQL {
 
   self =>
 
