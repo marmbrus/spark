@@ -18,10 +18,10 @@ object SQLMacros {
 
   case class Schema(dataType: DataType, nullable: Boolean)
 
-  def sqlImpl[A <: Product : c.WeakTypeTag](c: Context)(relation: c.Expr[RDD[A]]) = {
+  def sqlImpl(c: Context)(args: c.Expr[Any]*) = {
     import c.universe._
 
-    // TODO: Don't copy this function.
+    // TODO: Don't copy this function from ScalaReflection.
     def schemaFor(tpe: `Type`): Schema = tpe match {
       case t if t <:< typeOf[Option[_]] =>
         val TypeRef(_, _, Seq(optType)) = t
@@ -69,33 +69,54 @@ object SQLMacros {
         scala.StringContext.apply(..$rawParts))""" = c.prefix.tree
 
     val parts = rawParts.map(_.toString.stripPrefix("\"").stripSuffix("\""))
-    val query = parts(0) + "table1" + parts(1)
+    val query = parts(0) + (0 until args.size).map { i =>
+      s"table$i" + parts(i + 1)
+    }.mkString("")
 
     val parser = new SqlParser()
     val logicalPlan = parser(query)
     val catalog = new SimpleCatalog
     val analyzer = new Analyzer(catalog, EmptyFunctionRegistry, false)
 
-    val inputType = weakTypeTag[A]
-    val inputSchema = schemaFor(inputType.tpe).dataType.asInstanceOf[StructType].toAttributes
-    catalog.registerTable(None, "table1", LocalRelation(inputSchema:_*))
+    val tables = args.zipWithIndex.map { case (arg, i) =>
+      val TypeRef(_, _, Seq(schemaType)) = arg.actualType
+
+      val inputSchema = schemaFor(schemaType).dataType.asInstanceOf[StructType].toAttributes
+      (s"table$i", LocalRelation(inputSchema:_*))
+    }
+
+    tables.foreach(t => catalog.registerTable(None, t._1, t._2))
 
     val analyzedPlan = analyzer(logicalPlan)
 
     val fields = analyzedPlan.output.zipWithIndex.map {
-      case (attr, i) => q"${attr.name} -> row.getString($i)"
+      case (attr, i) =>
+        q"""${attr.name} -> row.${newTermName("get" + primitiveForType(attr.dataType))}($i)"""
     }
 
     val tree = q"""
       import records.R
-      $relation.registerAsTable("table1")
+      ..${args.zipWithIndex.map{ case (r,i) => q"""$r.registerAsTable(${s"table$i"})""" }}
       val result = sql($query)
       // TODO: Avoid double copy
       result.map(row => R(..$fields))
     """
 
-    // TODO: Why do I need this cast?
-    c.Expr(tree).asInstanceOf[c.Expr[org.apache.spark.rdd.RDD[records.R{def name: String}]]]
+    println(tree)
+
+    c.Expr(tree)
+  }
+
+  // TODO: Duplicated from codegen PR...
+  protected def primitiveForType(dt: DataType) = dt match {
+    case IntegerType => "Int"
+    case LongType => "Long"
+    case ShortType => "Short"
+    case ByteType => "Byte"
+    case DoubleType => "Double"
+    case FloatType => "Float"
+    case BooleanType => "Boolean"
+    case StringType => "String"
   }
 }
 
@@ -104,8 +125,7 @@ trait TypedSQL {
 
   @Experimental
   implicit class SqlInterpolator(val strCtx: StringContext) {
-    // TODO: Handle more than one relation
     // TODO: Handle functions...
-    def sql[A <: Product](relation: RDD[A]) = macro SQLMacros.sqlImpl[A]
+    def sql(args: Any*): Any = macro SQLMacros.sqlImpl
   }
 }

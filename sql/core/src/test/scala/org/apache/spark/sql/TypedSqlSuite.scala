@@ -26,14 +26,30 @@ case class Person(name: String, age: Int)
 class TypedSqlSuite extends FunSuite {
   import TestSQLContext._
 
+  val people = sparkContext.parallelize(
+    Person("Michael", 30) ::
+    Person("Bob", 40) :: Nil)
+
   test("typed query") {
-    val people = sparkContext.parallelize(
-      Person("Michael", 30) ::
-      Person("Bob", 40) :: Nil)
-
     val results = sql"SELECT name FROM $people WHERE age = 30"
-
     assert(results.first().name == "Michael")
   }
 
+  test("int results") {
+    val results = sql"SELECT * FROM $people WHERE age = 30"
+    assert(results.first().name == "Michael")
+    assert(results.first().age == 30)
+  }
+
+  ignore("nested results") { }
+
+  ignore("join query") {
+    val results = sql"""
+      SELECT a.name
+      FROM $people a
+      JOIN $people b ON a.age = b.age
+    """
+    // TODO: R is not serializable.
+    // assert(results.first().name == "Michael")
+  }
 }
