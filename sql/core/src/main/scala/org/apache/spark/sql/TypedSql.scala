@@ -8,6 +8,7 @@ import org.apache.spark.sql.catalyst.types._
 import scala.language.experimental.macros
 
 import records._
+import Macros.RecordMacros
 
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.rdd.RDD
@@ -89,17 +90,46 @@ object SQLMacros {
 
     val analyzedPlan = analyzer(logicalPlan)
 
-    val fields = analyzedPlan.output.zipWithIndex.map {
-      case (attr, i) =>
-        q"""${attr.name} -> row.${newTermName("get" + primitiveForType(attr.dataType))}($i)"""
+    // TODO: This shouldn't probably be here but somewhere generic
+    // which defines the catalyst <-> Scala type mapping
+    def toScalaType(dt: DataType) = dt match {
+      case IntegerType => definitions.IntTpe
+      case LongType => definitions.LongTpe
+      case ShortType => definitions.ShortTpe
+      case ByteType => definitions.ByteTpe
+      case DoubleType => definitions.DoubleTpe
+      case FloatType => definitions.FloatTpe
+      case BooleanType => definitions.BooleanTpe
+      case StringType => definitions.StringClass.toType
     }
 
+    val schema = analyzedPlan.output.map(attr => (attr.name, toScalaType(attr.dataType)))
+    val dataImpl = {
+      // Generate a case for each field
+      val cases = analyzedPlan.output.zipWithIndex.map {
+        case (attr, i) =>
+          cq"""${attr.name} => row.${newTermName("get" + primitiveForType(attr.dataType))}($i)"""
+      }
+
+      // Implement __data using these cases.
+      // TODO: Unfortunately, this still boxes. We cannot resolve this
+      // since the R abstraction depends on the fully generic __data.
+      // The only way to change this is to create __dataLong, etc. on
+      // R itself
+      q"""
+      val res = fieldName match {
+        case ..$cases
+        case _ => ???
+      }
+      res.asInstanceOf[T]
+      """
+    }
+
+    val record: c.Expr[Nothing] = new RecordMacros[c.type](c).record(schema)(tq"Serializable")()(dataImpl)
     val tree = q"""
-      import records.R
       ..${args.zipWithIndex.map{ case (r,i) => q"""$r.registerAsTable(${s"table$i"})""" }}
       val result = sql($query)
-      // TODO: Avoid double copy
-      result.map(row => R(..$fields))
+      result.map(row => $record)
     """
 
     println(tree)
