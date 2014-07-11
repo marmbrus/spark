@@ -43,13 +43,9 @@ class TypedSqlSuite extends FunSuite {
 
   ignore("nested results") { }
 
-  ignore("join query") {
-    val results = sql"""
-      SELECT a.name
-      FROM $people a
-      JOIN $people b ON a.age = b.age
-    """
-    // TODO: R is not serializable.
-    // assert(results.first().name == "Michael")
+  test("join query") {
+    val results = sql"""SELECT a.name FROM $people a JOIN $people b ON a.age = b.age"""
+
+    assert(results.first().name == "Michael")
   }
 }
