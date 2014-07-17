@@ -103,29 +103,44 @@ object SQLMacros {
       case StringType => definitions.StringClass.toType
     }
 
-    val schema = analyzedPlan.output.map(attr => (attr.name, toScalaType(attr.dataType)))
-    val dataImpl = {
-      // Generate a case for each field
-      val cases = analyzedPlan.output.zipWithIndex.map {
-        case (attr, i) =>
-          cq"""${attr.name} => row.${newTermName("get" + primitiveForType(attr.dataType))}($i)"""
-      }
+    // TODO: Move this to a macro implementation class (we need it
+    // locally for `Type` which is on c.universe)
+    case class RecSchema(name: String, index: Int,
+      cType: DataType, tpe: Type)
 
-      // Implement __data using these cases.
-      // TODO: Unfortunately, this still boxes. We cannot resolve this
-      // since the R abstraction depends on the fully generic __data.
-      // The only way to change this is to create __dataLong, etc. on
-      // R itself
-      q"""
-      val res = fieldName match {
-        case ..$cases
-        case _ => ???
-      }
-      res.asInstanceOf[T]
-      """
+    val fullSchema = analyzedPlan.output.zipWithIndex.map { case (attr, i) =>
+      RecSchema(attr.name, i, attr.dataType, toScalaType(attr.dataType))
     }
 
-    val record: c.Expr[Nothing] = new RecordMacros[c.type](c).record(schema)(tq"Serializable")()(dataImpl)
+    val schema = fullSchema.map(s => (s.name, s.tpe))
+
+    val rMacros = new RecordMacros[c.type](c)
+
+    val (spFlds, objFields) = fullSchema.partition(s =>
+      rMacros.specializedTypes.contains(s.tpe))
+
+    val spFldsByType = {
+      val grouped = spFlds.groupBy(_.tpe)
+      grouped.mapValues { _.map(s => s.name -> s).toMap }
+    }
+
+    def methodName(t: DataType) = newTermName("get" + primitiveForType(t))
+
+    val dataObjImpl = {
+      val fldTrees = objFields.map(s =>
+        s.name -> q"row.${methodName(s.cType)}(${s.index})"
+      ).toMap
+      val lookupTree = rMacros.genLookup(q"fieldName", fldTrees, mayCache = false)
+      q"($lookupTree).asInstanceOf[T]"
+    }
+
+    val record = rMacros.specializedRecord(schema)(tq"Serializable")()(dataObjImpl) {
+      case tpe if spFldsByType.contains(tpe) =>
+        val fldTrees = spFldsByType(tpe).mapValues(s =>
+          q"row.${methodName(s.cType)}(${s.index})")
+        rMacros.genLookup(q"fieldName", fldTrees, mayCache = false)
+    }
+
     val tree = q"""
       ..${args.zipWithIndex.map{ case (r,i) => q"""$r.registerAsTable(${s"table$i"})""" }}
       val result = sql($query)
