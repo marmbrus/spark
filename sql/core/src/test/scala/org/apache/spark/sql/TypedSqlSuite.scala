@@ -46,9 +46,9 @@ class TypedSqlSuite extends FunSuite {
     assert(results.first().age == 30)
   }
 
-  ignore("nested results") {
+  test("nested results") {
     val results = sql"SELECT * FROM $cars"
-    assert(results.first().owner.name === "Michael")
+    assert(results.first().owner.name == "Michael")
   }
 
   test("join query") {

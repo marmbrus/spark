@@ -6,6 +6,7 @@ import org.apache.spark.sql.catalyst.plans.logical.LocalRelation
 import org.apache.spark.sql.catalyst.types._
 
 import scala.language.experimental.macros
+import scala.language.existentials
 
 import records._
 import Macros.RecordMacros
@@ -17,10 +18,112 @@ import org.apache.spark.sql.catalyst.{SqlParser, ScalaReflection}
 object SQLMacros {
   import scala.reflect.macros._
 
+  def sqlImpl(c: Context)(args: c.Expr[Any]*) =
+    new Macros[c.type](c).sql(args)
+
   case class Schema(dataType: DataType, nullable: Boolean)
 
-  def sqlImpl(c: Context)(args: c.Expr[Any]*) = {
+  class Macros[C <: Context](val c: C) {
     import c.universe._
+
+    val rowTpe = tq"_root_.org.apache.spark.sql.catalyst.expressions.Row"
+
+    val rMacros = new RecordMacros[c.type](c)
+
+    case class RecSchema(name: String, index: Int,
+      cType: DataType, tpe: Type)
+
+    def sql(args: Seq[c.Expr[Any]]) = {
+
+      val q"""
+        org.apache.spark.sql.test.TestSQLContext.SqlInterpolator(
+          scala.StringContext.apply(..$rawParts))""" = c.prefix.tree
+
+      val parts = rawParts.map(_.toString.stripPrefix("\"").stripSuffix("\""))
+      val query = parts(0) + args.indices.map { i => s"table$i" + parts(i + 1) }.mkString("")
+
+      val analyzedPlan = analyzeQuery(query, args.map(_.actualType))
+
+      val fields = analyzedPlan.output.map(attr => (attr.name, attr.dataType))
+      val record = genRecord(q"row", fields)
+
+      val tree = q"""
+        ..${args.zipWithIndex.map{ case (r,i) => q"""$r.registerAsTable(${s"table$i"})""" }}
+        val result = sql($query)
+        result.map(row => $record)
+      """
+
+      println(tree)
+
+      c.Expr(tree)
+    }
+
+    // TODO: Handle nullable fields
+    def genRecord(row: Tree, fields: Seq[(String, DataType)]) = {
+      case class ImplSchema(name: String, tpe: Type, impl: Tree)
+
+      val implSchemas = for {
+        ((name, dataType),i) <- fields.zipWithIndex
+      } yield {
+        val tpe = c.typeCheck(genGetField(q"null: $rowTpe", i, dataType)).tpe
+        val tree = genGetField(row, i, dataType)
+
+        ImplSchema(name, tpe, tree)
+      }
+
+      val schema = implSchemas.map(f => (f.name, f.tpe))
+
+      val (spFlds, objFields) = implSchemas.partition(s =>
+        rMacros.specializedTypes.contains(s.tpe))
+
+      val spImplsByTpe = {
+        val grouped = spFlds.groupBy(_.tpe)
+        grouped.mapValues { _.map(s => s.name -> s.impl).toMap }
+      }
+
+      val dataObjImpl = {
+        val impls = objFields.map(s => s.name -> s.impl).toMap
+        val lookupTree = rMacros.genLookup(q"fieldName", impls, mayCache = false)
+        q"($lookupTree).asInstanceOf[T]"
+      }
+
+      rMacros.specializedRecord(schema)(tq"Serializable")()(dataObjImpl) {
+        case tpe if spImplsByTpe.contains(tpe) =>
+          rMacros.genLookup(q"fieldName", spImplsByTpe(tpe), mayCache = false)
+      }
+    }
+
+    /** Generate a tree that retrieves a given field for a given type.
+      * Constructs a nested record if necessary
+      */
+    def genGetField(row: Tree, index: Int, t: DataType): Tree = t match {
+      case t: PrimitiveType =>
+        val methodName = newTermName("get" + primitiveForType(t))
+        q"$row.$methodName($index)"
+      case StructType(structFields) =>
+        val fields = structFields.map(f => (f.name, f.dataType))
+        genRecord(q"$row($index).asInstanceOf[$rowTpe]", fields)
+      case _ =>
+        c.abort(NoPosition, s"Query returns currently unhandled field type: $t")
+    }
+
+    def analyzeQuery(query: String, tableTypes: Seq[Type]) = {
+      val parser = new SqlParser()
+      val logicalPlan = parser(query)
+      val catalog = new SimpleCatalog
+      val analyzer = new Analyzer(catalog, EmptyFunctionRegistry, false)
+
+      val tables = tableTypes.zipWithIndex.map { case (tblTpe, i) =>
+        val TypeRef(_, _, Seq(schemaType)) = tblTpe
+
+        val inputSchema = schemaFor(schemaType).dataType.asInstanceOf[StructType].toAttributes
+        (s"table$i", LocalRelation(inputSchema:_*))
+      }
+
+      tables.foreach(t => catalog.registerTable(None, t._1, t._2))
+
+      analyzer(logicalPlan)
+    }
 
     // TODO: Don't copy this function from ScalaReflection.
     def schemaFor(tpe: `Type`): Schema = tpe match {
@@ -65,95 +168,10 @@ object SQLMacros {
       case t if t <:< definitions.BooleanTpe => Schema(BooleanType, nullable = false)
     }
 
-    val q"""
-      org.apache.spark.sql.test.TestSQLContext.SqlInterpolator(
-        scala.StringContext.apply(..$rawParts))""" = c.prefix.tree
-
-    val parts = rawParts.map(_.toString.stripPrefix("\"").stripSuffix("\""))
-    val query = parts(0) + (0 until args.size).map { i =>
-      s"table$i" + parts(i + 1)
-    }.mkString("")
-
-    val parser = new SqlParser()
-    val logicalPlan = parser(query)
-    val catalog = new SimpleCatalog
-    val analyzer = new Analyzer(catalog, EmptyFunctionRegistry, false)
-
-    val tables = args.zipWithIndex.map { case (arg, i) =>
-      val TypeRef(_, _, Seq(schemaType)) = arg.actualType
-
-      val inputSchema = schemaFor(schemaType).dataType.asInstanceOf[StructType].toAttributes
-      (s"table$i", LocalRelation(inputSchema:_*))
-    }
-
-    tables.foreach(t => catalog.registerTable(None, t._1, t._2))
-
-    val analyzedPlan = analyzer(logicalPlan)
-
-    // TODO: This shouldn't probably be here but somewhere generic
-    // which defines the catalyst <-> Scala type mapping
-    def toScalaType(dt: DataType) = dt match {
-      case IntegerType => definitions.IntTpe
-      case LongType => definitions.LongTpe
-      case ShortType => definitions.ShortTpe
-      case ByteType => definitions.ByteTpe
-      case DoubleType => definitions.DoubleTpe
-      case FloatType => definitions.FloatTpe
-      case BooleanType => definitions.BooleanTpe
-      case StringType => definitions.StringClass.toType
-    }
-
-    // TODO: Move this to a macro implementation class (we need it
-    // locally for `Type` which is on c.universe)
-    case class RecSchema(name: String, index: Int,
-      cType: DataType, tpe: Type)
-
-    val fullSchema = analyzedPlan.output.zipWithIndex.map { case (attr, i) =>
-      RecSchema(attr.name, i, attr.dataType, toScalaType(attr.dataType))
-    }
-
-    val schema = fullSchema.map(s => (s.name, s.tpe))
-
-    val rMacros = new RecordMacros[c.type](c)
-
-    val (spFlds, objFields) = fullSchema.partition(s =>
-      rMacros.specializedTypes.contains(s.tpe))
-
-    val spFldsByType = {
-      val grouped = spFlds.groupBy(_.tpe)
-      grouped.mapValues { _.map(s => s.name -> s).toMap }
-    }
-
-    def methodName(t: DataType) = newTermName("get" + primitiveForType(t))
-
-    val dataObjImpl = {
-      val fldTrees = objFields.map(s =>
-        s.name -> q"row.${methodName(s.cType)}(${s.index})"
-      ).toMap
-      val lookupTree = rMacros.genLookup(q"fieldName", fldTrees, mayCache = false)
-      q"($lookupTree).asInstanceOf[T]"
-    }
-
-    val record = rMacros.specializedRecord(schema)(tq"Serializable")()(dataObjImpl) {
-      case tpe if spFldsByType.contains(tpe) =>
-        val fldTrees = spFldsByType(tpe).mapValues(s =>
-          q"row.${methodName(s.cType)}(${s.index})")
-        rMacros.genLookup(q"fieldName", fldTrees, mayCache = false)
-    }
-
-    val tree = q"""
-      ..${args.zipWithIndex.map{ case (r,i) => q"""$r.registerAsTable(${s"table$i"})""" }}
-      val result = sql($query)
-      result.map(row => $record)
-    """
-
-    println(tree)
-
-    c.Expr(tree)
   }
 
   // TODO: Duplicated from codegen PR...
-  protected def primitiveForType(dt: DataType) = dt match {
+  protected def primitiveForType(dt: PrimitiveType) = dt match {
     case IntegerType => "Int"
     case LongType => "Long"
     case ShortType => "Short"
