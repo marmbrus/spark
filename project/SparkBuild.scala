@@ -499,7 +499,7 @@ object SparkBuild extends Build {
     parallelExecution in Test := false,
     libraryDependencies ++= Seq(
       "com.typesafe" %% "scalalogging-slf4j" % "1.0.1",
-      "records" %% "core" % "0.1-SNAPSHOT"
+      "ch.epfl.lamp" %% "scala-records" % "0.1-SNAPSHOT"
     )
   )
 
