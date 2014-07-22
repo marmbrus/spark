@@ -23,12 +23,17 @@ import org.apache.spark.sql.test.TestSQLContext
 
 case class Person(name: String, age: Int)
 
+case class Car(owner: Person, model: String)
+
 class TypedSqlSuite extends FunSuite {
   import TestSQLContext._
 
   val people = sparkContext.parallelize(
     Person("Michael", 30) ::
     Person("Bob", 40) :: Nil)
+
+  val cars = sparkContext.parallelize(
+    Car(Person("Michael", 30), "GrandAm") :: Nil)
 
   test("typed query") {
     val results = sql"SELECT name FROM $people WHERE age = 30"
@@ -41,7 +46,10 @@ class TypedSqlSuite extends FunSuite {
     assert(results.first().age == 30)
   }
 
-  ignore("nested results") { }
+  ignore("nested results") {
+    val results = sql"SELECT * FROM $cars"
+    assert(results.first().owner.name === "Michael")
+  }
 
   test("join query") {
     val results = sql"""SELECT a.name FROM $people a JOIN $people b ON a.age = b.age"""
