@@ -128,7 +128,7 @@ feature parity with a HiveContext.
 
 </div>
 
-The specific variant of SQL that is used to parse queries can also be selected using the 
+The specific variant of SQL that is used to parse queries can also be selected using the
 `spark.sql.dialect` option.  This parameter can be changed using either the `setConf` method on
 a SQLContext or by using a `SET key=value` command in SQL.  For a SQLContext, the only dialect
 available is "sql" which uses a simple SQL parser provided by Spark SQL.  In a HiveContext, the
@@ -139,7 +139,7 @@ default is "hiveql", though "sql" is also available.  Since the HiveQL parser is
 
 Spark SQL supports operating on a variety of data sources through the `SchemaRDD` interface.
 A SchemaRDD can be operated on as normal RDDs and can also be registered as a temporary table.
-Registering a SchemaRDD as a table allows you to run SQL queries over its data.  This section 
+Registering a SchemaRDD as a table allows you to run SQL queries over its data.  This section
 describes the various methods for loading data into a SchemaRDD.
 
 ## RDDs
@@ -152,7 +152,7 @@ of time, while you are writing your Spark application.
 The second method for creating SchemaRDDs is through a programmatic interface that allows you to
 construct a schema and then apply it to and existing RDD.  While this method is more verbose, it allows
 you to construct SchemaRDDs when the columns and their types are not known until runtime.
- 
+
 ### Inferring the Schema Using Reflection
 <div class="codetabs">
 
@@ -193,7 +193,7 @@ teenagers.map(t => "Name: " + t(0)).collect().foreach(println)
 <div data-lang="java"  markdown="1">
 
 Spark SQL supports automatically converting an RDD of [JavaBeans](http://stackoverflow.com/questions/3295496/what-is-a-javabean-exactly)
-into a Schema RDD.  The BeanInfo, obtained using reflection, defines the schema of the table. 
+into a Schema RDD.  The BeanInfo, obtained using reflection, defines the schema of the table.
 Currently, Spark SQL does not support JavaBeans that contain
 nested or contain complex types such as Lists or Arrays.  You can create a JavaBean by creating a
 class that implements Serializable and has getters and setters for all of its fields.
@@ -484,7 +484,7 @@ for name in names.collect():
 
 [Parquet](http://parquet.io) is a columnar format that is supported by many other data processing systems.
 Spark SQL provides support for both reading and writing Parquet files that automatically preserves the schema
-of the original data.  
+of the original data.
 
 ### Loading Data Programmatically
 
@@ -566,11 +566,11 @@ for teenName in teenNames.collect():
 
 </div>
 
-</div>                                                                             
+</div>
 
 ### Configuration
 
-Configuration of parquet can be done using the `setConf` method on SQLContext or by running 
+Configuration of parquet can be done using the `setConf` method on SQLContext or by running
 `SET key=value` commands using SQL.
 
 <table class="table">
@@ -579,8 +579,8 @@ Configuration of parquet can be done using the `setConf` method on SQLContext or
   <td><code>spark.sql.parquet.binaryAsString</code></td>
   <td>false</td>
   <td>
-    Some other parquet producing systems, in particular Impala and older versions of Spark SQL, do 
-    not differentiate between binary data and strings when writing out the parquet schema.  This 
+    Some other parquet producing systems, in particular Impala and older versions of Spark SQL, do
+    not differentiate between binary data and strings when writing out the parquet schema.  This
     flag tells Spark SQL to interpret binary data as a string to provide compatibility with these systems.
   </td>
 </tr>
@@ -588,14 +588,14 @@ Configuration of parquet can be done using the `setConf` method on SQLContext or
   <td><code>spark.sql.parquet.cacheMetadata</code></td>
   <td>false</td>
   <td>
-    Turns on caching of parquet schema metadata.  Can speed up querying 
+    Turns on caching of parquet schema metadata.  Can speed up querying
   </td>
 </tr>
 <tr>
   <td><code>spark.sql.parquet.compression.codec</code></td>
   <td>snappy</td>
   <td>
-    Sets the compression codec use when writing parquet files. Acceptable values include: 
+    Sets the compression codec use when writing parquet files. Acceptable values include:
     uncompressed, snappy, gzip, lzo.
   </td>
 </tr>
@@ -813,7 +813,7 @@ Note that if you just call `cache` rather than `cacheTable`, tables will _not_ b
 in-memory columnar format. So we strongly recommend using `cacheTable` whenever you want to
 cache tables.
 
-Configuration of in-memory caching can be done using the `setConf` method on SQLContext or by running 
+Configuration of in-memory caching can be done using the `setConf` method on SQLContext or by running
 `SET key=value` commands using SQL.
 
 <table class="table">
@@ -886,10 +886,32 @@ To start the JDBC server, run the following in the Spark directory:
 
     ./sbin/start-thriftserver.sh
 
-The default port the server listens on is 10000.  To listen on customized host and port, please set
-the `HIVE_SERVER2_THRIFT_PORT` and `HIVE_SERVER2_THRIFT_BIND_HOST` environment variables. You may
-run `./sbin/start-thriftserver.sh --help` for a complete list of all available options.  Now you can
-use beeline to test the Thrift JDBC server:
+This script accepts all `bin/spark-submit` command line options, plus a `--hiveconf` option to
+specify Hive properties.  You may run `./sbin/start-thriftserver.sh --help` for a complete list of
+all available options.  By default, the server listens on localhost:10000. You may override this
+bahaviour via either environment variables, i.e.:
+
+{% highlight bash %}
+export HIVE_SERVER2_THRIFT_PORT=<listening-port>
+export HIVE_SERVER2_THRIFT_BIND_HOST=<listening-host>
+./sbin/start-thriftserver.sh \
+  --master <master-uri> \
+  ...
+```
+{% endhighlight %}
+
+or system properties:
+
+{% highlight bash %}
+./sbin/start-thriftserver.sh \
+  --hiveconf hive.server2.thrift.port=<listening-port> \
+  --hiveconf hive.server2.thrift.bind.host=<listening-host> \
+  --master <master-uri>
+  ...
+```
+{% endhighlight %}
+
+Now you can use beeline to test the Thrift JDBC server:
 
     ./bin/beeline
 
@@ -933,7 +955,7 @@ SQL deprecates this property by a new property `spark.sql.shuffle.partitions`, w
 is 200. Users may customize this property via `SET`:
 
     SET spark.sql.shuffle.partitions=10;
-    SELECT page, count(*) c 
+    SELECT page, count(*) c
     FROM logs_last_month_cached
     GROUP BY page ORDER BY c DESC LIMIT 10;
 
@@ -1112,7 +1134,7 @@ evaluated by the SQL execution engine.  A full list of the functions supported c
     The range of numbers is from `-9223372036854775808` to `9223372036854775807`.
     - `FloatType`: Represents 4-byte single-precision floating point numbers.
     - `DoubleType`: Represents 8-byte double-precision floating point numbers.
-    - `DecimalType`: 
+    - `DecimalType`:
 * String type
     - `StringType`: Represents character string values.
 * Binary type
@@ -1142,7 +1164,7 @@ evaluated by the SQL execution engine.  A full list of the functions supported c
 <div data-lang="scala"  markdown="1">
 
 All data types of Spark SQL are located in the package `org.apache.spark.sql`.
-You can access them by doing 
+You can access them by doing
 {% highlight scala %}
 import  org.apache.spark.sql._
 {% endhighlight %}
@@ -1248,7 +1270,7 @@ import  org.apache.spark.sql._
 <tr>
   <td> <b>StructType</b> </td>
   <td> org.apache.spark.sql.Row </td>
-  <td> 
+  <td>
   StructType(<i>fields</i>)<br />
   <b>Note:</b> <i>fields</i> is a Seq of StructFields. Also, two fields with the same
   name are not allowed.
@@ -1270,7 +1292,7 @@ import  org.apache.spark.sql._
 
 All data types of Spark SQL are located in the package of
 `org.apache.spark.sql.api.java`. To access or create a data type,
-please use factory methods provided in 
+please use factory methods provided in
 `org.apache.spark.sql.api.java.DataType`.
 
 <table class="table">
@@ -1376,7 +1398,7 @@ please use factory methods provided in
 <tr>
   <td> <b>StructType</b> </td>
   <td> org.apache.spark.sql.api.java </td>
-  <td> 
+  <td>
   DataType.createStructType(<i>fields</i>)<br />
   <b>Note:</b> <i>fields</i> is a List or an array of StructFields.
   Also, two fields with the same name are not allowed.
@@ -1397,7 +1419,7 @@ please use factory methods provided in
 <div data-lang="python"  markdown="1">
 
 All data types of Spark SQL are located in the package of `pyspark.sql`.
-You can access them by doing 
+You can access them by doing
 {% highlight python %}
 from pyspark.sql import *
 {% endhighlight %}
@@ -1521,7 +1543,7 @@ from pyspark.sql import *
 <tr>
   <td> <b>StructType</b> </td>
   <td> list or tuple </td>
-  <td> 
+  <td>
   StructType(<i>fields</i>)<br />
   <b>Note:</b> <i>fields</i> is a Seq of StructFields. Also, two fields with the same
   name are not allowed.
