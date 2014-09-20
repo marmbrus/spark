@@ -26,7 +26,6 @@ import org.apache.spark.sql.catalyst.types.StringType
  */
 abstract class Command extends LeafNode {
   self: Product =>
-  def output: Seq[Attribute] = Seq.empty
 }
 
 /**
@@ -58,7 +57,9 @@ case class ExplainCommand(plan: LogicalPlan, extended: Boolean = false) extends 
 /**
  * Returned for the "CACHE TABLE tableName" and "UNCACHE TABLE tableName" command.
  */
-case class CacheCommand(tableName: String, doCache: Boolean) extends Command
+case class CacheCommand(tableName: String, doCache: Boolean) extends Command {
+  override def output = Nil
+}
 
 /**
  * Returned for the "DESCRIBE [EXTENDED] [dbName.]tableName" command.
@@ -79,4 +80,6 @@ case class DescribeCommand(
 /**
  * Returned for the "CACHE TABLE tableName AS SELECT .." command.
  */
-case class CacheTableAsSelectCommand(tableName: String, plan: LogicalPlan) extends Command
+case class CacheTableAsSelectCommand(tableName: String, plan: LogicalPlan) extends Command {
+  val output = Nil
+}

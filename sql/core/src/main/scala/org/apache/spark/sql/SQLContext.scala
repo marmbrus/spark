@@ -24,7 +24,7 @@ import org.apache.hadoop.conf.Configuration
 
 import org.apache.spark.annotation.{AlphaComponent, DeveloperApi, Experimental}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.catalyst.ScalaReflection
+import org.apache.spark.sql.catalyst.{DDLParser, ScalaReflection}
 import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.catalyst.dsl.ExpressionConversions
 import org.apache.spark.sql.catalyst.expressions._
@@ -69,8 +69,12 @@ class SQLContext(@transient val sparkContext: SparkContext)
   protected[sql] val optimizer = Optimizer
   @transient
   protected[sql] val parser = new catalyst.SqlParser
+  @transient
+  protected[sql] val ddlParser = new DDLParser
 
-  protected[sql] def parseSql(sql: String): LogicalPlan = parser(sql)
+  protected[sql] def parseSql(sql: String): LogicalPlan = {
+    ddlParser(sql).getOrElse(parser(sql))
+  }
   protected[sql] def executeSql(sql: String): this.QueryExecution = executePlan(parseSql(sql))
   protected[sql] def executePlan(plan: LogicalPlan): this.QueryExecution =
     new this.QueryExecution { val logical = plan }

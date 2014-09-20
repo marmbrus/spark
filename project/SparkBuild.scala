@@ -209,6 +209,7 @@ object Catalyst {
 
 object SQL {
   lazy val settings = Seq(
+    libraryDependencies += "org.apache.avro" % "avro" % "1.7.7",
     initialCommands in console :=
       """
         |import org.apache.spark.sql.catalyst.analysis._

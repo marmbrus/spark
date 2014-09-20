@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.execution
 
-import org.apache.spark.sql.{SQLContext, execution}
+import org.apache.spark.sql.{foreign, SQLContext, execution}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.planning._
 import org.apache.spark.sql.catalyst.plans._
@@ -254,6 +254,8 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
     def numPartitions = self.numPartitions
 
     def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
+      case l @ foreign.LogicalRelation(t: foreign.TableScan) =>
+        ExistingRdd(l.output, t.buildScan()) :: Nil
       case logical.Distinct(child) =>
         execution.Distinct(partial = false,
           execution.Distinct(partial = true, planLater(child))) :: Nil
@@ -299,6 +301,7 @@ private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
 
   case class CommandStrategy(context: SQLContext) extends Strategy {
     def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
+      case r: RunnableCommand => ExecutedCommand(r) :: Nil
       case logical.SetCommand(key, value) =>
         Seq(execution.SetCommand(key, value, plan.output)(context))
       case logical.ExplainCommand(logicalPlan, extended) =>
