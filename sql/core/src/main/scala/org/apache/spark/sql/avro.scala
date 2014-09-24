@@ -39,7 +39,10 @@ package object avro extends DataSource {
    * Creates a new relation for data store in avro given a `path` as a parameter.
    */
   def createRelation(sqlContext: SQLContext, parameters: Map[String, String]) = {
-    AvroRelation(parameters("path"))(sqlContext)
+      parameters.get("path") match {
+      case Some(content) => AvroRelation(content)(sqlContext)
+      case None => sys.error(s"path is not set!")
+    }
   }
 
   /**
