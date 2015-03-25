@@ -24,6 +24,7 @@ import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.catalyst.trees.TreeNode
 import org.apache.spark.sql.catalyst.trees
+import org.apache.spark.sql.types.{ArrayType, StructType, StructField}
 
 
 abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
@@ -196,14 +197,19 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
 
       // One match, but we also need to extract the requested nested field.
       case Seq((a, nestedFields)) =>
-        // The foldLeft adds UnresolvedGetField for every remaining parts of the name,
-        // and aliased it with the last part of the name.
-        // For example, consider name "a.b.c", where "a" is resolved to an existing attribute.
-        // Then this will add UnresolvedGetField("b") and UnresolvedGetField("c"), and alias
-        // the final expression as "c".
-        val fieldExprs = nestedFields.foldLeft(a: Expression)(UnresolvedGetField)
-        val aliasName = nestedFields.last
-        Some(Alias(fieldExprs, aliasName)())
+        try {
+
+          // The foldLeft adds UnresolvedGetField for every remaining parts of the name,
+          // and aliased it with the last part of the name.
+          // For example, consider name "a.b.c", where "a" is resolved to an existing attribute.
+          // Then this will add UnresolvedGetField("b") and UnresolvedGetField("c"), and alias
+          // the final expression as "c".
+          val fieldExprs = nestedFields.foldLeft(a: Expression)(resolveGetField(_, _, resolver))
+          val aliasName = nestedFields.last
+          Some(Alias(fieldExprs, aliasName)())
+        } catch {
+          case a: AnalysisException => None
+        }
 
       // No matches.
       case Seq() =>
@@ -212,9 +218,44 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
 
       // More than one match.
       case ambiguousReferences =>
-        val referenceNames = ambiguousReferences.map(_._1.qualifiedName).mkString(", ")
+        val referenceNames = ambiguousReferences.map(_._1).mkString(", ")
         throw new AnalysisException(
-          s"Reference '$name' is ambiguous, could be: $referenceNames.")
+          s"Reference '$name' is ambiguous, could be: $referenceNames.\n$this")
+    }
+  }
+
+  /**
+   * Returns the resolved `GetField`, and report error if no desired field or over one
+   * desired fields are found.
+   *
+   * TODO: this code is duplicated from Analyzer and should be refactored to avoid this.
+   */
+  protected def resolveGetField(
+      expr: Expression,
+      fieldName: String,
+      resolver: Resolver): Expression = {
+    def findField(fields: Array[StructField]): Int = {
+      val checkField = (f: StructField) => resolver(f.name, fieldName)
+      val ordinal = fields.indexWhere(checkField)
+      if (ordinal == -1) {
+        throw new AnalysisException(
+          s"No such struct field $fieldName in ${fields.map(_.name).mkString(", ")}")
+      } else if (fields.indexWhere(checkField, ordinal + 1) != -1) {
+        throw new AnalysisException(
+          s"Ambiguous reference to fields ${fields.filter(checkField).mkString(", ")}")
+      } else {
+        ordinal
+      }
+    }
+    expr.dataType match {
+      case StructType(fields) =>
+        val ordinal = findField(fields)
+        StructGetField(expr, fields(ordinal), ordinal)
+      case ArrayType(StructType(fields), containsNull) =>
+        val ordinal = findField(fields)
+        ArrayGetField(expr, fields(ordinal), ordinal, containsNull)
+      case otherType =>
+        throw new AnalysisException(s"GetField is not valid on fields of type $otherType")
     }
   }
 }
