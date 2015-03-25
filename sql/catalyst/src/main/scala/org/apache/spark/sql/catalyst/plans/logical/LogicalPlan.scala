@@ -220,7 +220,7 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
       case ambiguousReferences =>
         val referenceNames = ambiguousReferences.map(_._1).mkString(", ")
         throw new AnalysisException(
-          s"Reference '$name' is ambiguous, could be: $referenceNames.\n$this")
+          s"Reference '$name' is ambiguous, could be: $referenceNames.")
     }
   }
 
