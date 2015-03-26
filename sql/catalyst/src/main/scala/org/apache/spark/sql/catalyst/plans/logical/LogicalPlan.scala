@@ -198,11 +198,10 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
       // One match, but we also need to extract the requested nested field.
       case Seq((a, nestedFields)) =>
         try {
-
-          // The foldLeft adds UnresolvedGetField for every remaining parts of the name,
-          // and aliased it with the last part of the name.
-          // For example, consider name "a.b.c", where "a" is resolved to an existing attribute.
-          // Then this will add UnresolvedGetField("b") and UnresolvedGetField("c"), and alias
+          // The foldLeft adds GetFields for every remaining parts of the identifier,
+          // and aliases it with the last part of the identifier.
+          // For example, consider "a.b.c", where "a" is resolved to an existing attribute.
+          // Then this will add GetField("c", GetField("b", a)), and alias
           // the final expression as "c".
           val fieldExprs = nestedFields.foldLeft(a: Expression)(resolveGetField(_, _, resolver))
           val aliasName = nestedFields.last
