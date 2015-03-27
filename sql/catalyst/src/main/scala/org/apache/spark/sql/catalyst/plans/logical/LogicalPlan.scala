@@ -226,10 +226,8 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
   /**
    * Returns the resolved `GetField`, and report error if no desired field or over one
    * desired fields are found.
-   *
-   * TODO: this code is duplicated from Analyzer and should be refactored to avoid this.
    */
-  protected def resolveGetField(
+  def resolveGetField(
       expr: Expression,
       fieldName: String,
       resolver: Resolver): Expression = {
