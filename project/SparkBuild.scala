@@ -194,6 +194,10 @@ object SparkBuild extends PomBuild {
 
     javaOptions ++= Seq("-Xmx2G", "-XX:MaxPermSize=1g"),
 
+    unmanagedClasspath in Runtime += file("conf"),
+
+    libraryDependencies += "mysql" % "mysql-connector-java" % "5.1.12",
+
     sparkShell := {
       (runMain in Compile).toTask(" org.apache.spark.repl.Main -usejavacp").value
     }
