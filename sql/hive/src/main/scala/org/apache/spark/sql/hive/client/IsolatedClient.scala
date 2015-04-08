@@ -42,25 +42,25 @@ trait ClientInterface {
  * Spark SQL.
  */
 class ClientWrapper(config: Map[String, String]) extends ClientInterface with Logging {
-  protected[hive] val conf = new HiveConf(classOf[SessionState])
+  private val conf = new HiveConf(classOf[SessionState])
   config.foreach { case (k, v) => conf.set(k, v)}
 
-  def properties = Seq(
+  private def properties = Seq(
     "javax.jdo.option.ConnectionURL",
     "javax.jdo.option.ConnectionDriverName",
     "javax.jdo.option.ConnectionUserName")
 
   properties.foreach(p => logInfo(s"Hive Configuration: $p = ${conf.get(p)}"))
 
-  val state = withClassLoader {
+  private val state = withClassLoader {
     val newState = new SessionState(conf)
     SessionState.start(newState)
     newState
   }
-  protected[hive] val client = Hive.get(conf)
 
+  private val client = Hive.get(conf)
 
-  def withClassLoader[A](f: => A) = {
+  private def withClassLoader[A](f: => A) = {
     val original = Thread.currentThread().getContextClassLoader
     Thread.currentThread().setContextClassLoader(getClass.getClassLoader)
     val ret = try f finally {
@@ -110,6 +110,7 @@ object IsolatedClientLoader {
         None)
     val allFiles = classpath.split(",").map(new File(_)).toSet
 
+    // TODO: Remove copy logic.
     val tempDir = File.createTempFile("hive", "v" + version.toString)
     tempDir.delete()
     tempDir.mkdir()
