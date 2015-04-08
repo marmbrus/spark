@@ -1,9 +1,12 @@
 package org.apache.spark.sql.hive
 
 import java.io.{InputStream, File}
+import java.lang.management.ManagementFactory
 import java.net.{URI, URL, URLClassLoader}
 import java.util
+import java.util.jar.JarFile
 import java.util.zip.{ZipEntry, ZipFile}
+import javax.jdo.JDOHelper
 
 import org.apache.hadoop.hive.metastore.api.Database
 import org.apache.hive.common.HiveVersionAnnotation
@@ -27,9 +30,14 @@ import scala.util.Try
  */
 trait ClientInterface {
   def listTables(dbName: String): Seq[String]
+
   def getTable(dbName: String, tableName: String)
+
   def createTable(tableName: String): Unit
+
   def createDatabase(databaseName: String): Unit
+
+  def close(): Unit
 }
 
 /**
@@ -40,7 +48,7 @@ trait ClientInterface {
  * Spark SQL.
  */
 class ClientWrapper(config: Map[String, String]) extends ClientInterface with Logging {
-  protected[hive] val conf = new HiveConf()
+  protected[hive] val conf = new HiveConf(classOf[SessionState])
   config.foreach { case (k, v) => conf.set(k, v)}
 
   def properties = Seq(
@@ -48,14 +56,23 @@ class ClientWrapper(config: Map[String, String]) extends ClientInterface with Lo
     "javax.jdo.option.ConnectionDriverName",
     "javax.jdo.option.ConnectionUserName")
 
-  properties.foreach(p => logInfo(s"Hive Configuration: $p = ${conf.get(p)}"))
 
-  protected[hive] val client = Hive.get(conf)
+  val beans = ManagementFactory.getPlatformMBeanServer.queryMBeans(null, null)
+  beans.filter(_.getObjectName.getCanonicalName.contains("bonecp")).map(_.getObjectName).foreach(ManagementFactory.getPlatformMBeanServer.unregisterMBean)
+
+  println("JDO: " + JDOHelper.getInstance())
+  properties.foreach(p => logWarning(s"Hive Configuration: $p = ${conf.get(p)}"))
+
+  logWarning("START SESSION")
   val state = withClassLoader {
-    val newState = new SessionState(new HiveConf(classOf[SessionState]))
+    val newState = new SessionState(conf)
     SessionState.start(newState)
     newState
   }
+  logWarning("START CLIENT")
+  protected[hive] val client = Hive.get(conf)
+  logWarning("DONE")
+
 
   def withClassLoader[A](f: => A) = {
     val original = Thread.currentThread().getContextClassLoader
@@ -84,21 +101,27 @@ class ClientWrapper(config: Map[String, String]) extends ClientInterface with Lo
   def listTables(dbName: String): Seq[String] = withClassLoader {
     client.getAllTables()
   }
+
+  def close(): Unit = {
+    SessionState.detachSession()
+  }
 }
 
 object IsolatedClientLoader {
-  private def getFiles(artifact: String, version: Int): Set[File] = {
+  private def getVersion(version: Int): Seq[File] = {
+    val hiveArtifacts =
+      (Seq("hive-metastore", "hive-exec", "hive-common") ++ (if (version <= 10) "hive-builtins" :: Nil else Nil))
+        .map(a => s"org.apache.hive:$a:0.$version.0") :+
+        "com.google.guava:guava:14.0" :+
+        "org.apache.hadoop:hadoop-client:1.0.4" :+
+        "mysql:mysql-connector-java:5.1.12"
+
     val classpath =
       SparkSubmitUtils.resolveMavenCoordinates(
-        s"org.apache.hive:$artifact:0.$version.0",
+        hiveArtifacts.mkString(","),
         Some("http://www.datanucleus.org/downloads/maven2"),
         None)
-    classpath.split(",").map(new File(_)).toSet
-  }
-
-  private def getVersion(version: Int): Seq[File] = {
-    val allFiles =
-      getFiles("hive-metastore", version) ++ getFiles("hive-exec", version)
+    val allFiles = classpath.split(",").map(new File(_)).toSet
 
     val tempDir = File.createTempFile("hive", "v" + version.toString)
     tempDir.delete()
@@ -111,8 +134,8 @@ object IsolatedClientLoader {
   private def resolvedVersions = new scala.collection.mutable.HashMap[Int, Seq[File]]
 
   def forVersion(version: Int, config: Map[String, String]) = synchronized {
-    val files = resolvedVersions.getOrElseUpdate(version, getVersion(version))
-    new IsolatedClientLoader(files, config)
+    //val files = resolvedVersions.getOrElseUpdate(version,)
+    new IsolatedClientLoader(getVersion(version), config)
   }
 }
 
@@ -132,26 +155,51 @@ class IsolatedClientLoader(
     config: Map[String, String] = Map.empty) extends Logging {
 
   /** The systems root classloader, should not not know about Hive really anything. */
-  protected val rootClassLoader = ClassLoader.getSystemClassLoader.getParent
+  protected val rootClassLoader = ClassLoader.getSystemClassLoader.getParent.getParent
   /** The classloader that is used to load non-hive classes */
   protected val baseClassLoader = Thread.currentThread().getContextClassLoader
 
+  println(
+    baseClassLoader.loadClass("com.google.common.base.internal.Finalizer").getClassLoader.getResource("com/google/common/base/internal/Finalizer.class"))
+
   // Check to make sure that the root classloader does not know about Hive.
   assert(Try(baseClassLoader.loadClass("org.apache.hive.HiveConf")).isFailure)
+  assert(Try(rootClassLoader.loadClass("com.google.common.base.internal.Finalizer")).isFailure)
+
+  def listClasses(file: File): Seq[String] = {
+    val jarFile = new JarFile(file)
+    jarFile.entries
+      .map(_.toString)
+      .filter(_.endsWith(".class"))
+      .map(_.stripSuffix(".class").replaceAll("\\/", "."))
+      .toSeq
+  }
+
+  private val redefinedClasses = new scala.collection.mutable.HashSet[String]
+  execJars.flatMap(listClasses).foreach(redefinedClasses.add)
+
+  redefinedClasses.take(10).foreach(println)
 
   /** Hadoop, JDO, and datanucleus jars. */
   protected def otherJars: Array[File] = {
     new File("../../lib_managed/jars")
       .listFiles()
       .filter { f =>
-        f.getName.contains("hadoop") || f.getName.contains("jdo-api") || f.getName.contains("datanucleus")
+        f.getName.contains("hadoop")
     }
   }
 
   /** All jars used by the hive specific classloader.*/
-  protected def allJars = (execJars ++ otherJars).map(_.toURI.toURL).toArray
+  protected def allJars = execJars.map(_.toURI.toURL).toArray
 
   allJars.foreach(println)
+
+  def isSharedClass(name: String) =
+    name.contains("slf4j") ||
+    name.contains("log4j") ||
+    name.startsWith("org.apache.spark.") ||
+    name.startsWith("scala.") ||
+    (name.startsWith("java.lang.") && !name.contains("ManagementFactory"))
 
   /** The classloader that is used to load an isolated version of Hive. */
   protected val classLoader: ClassLoader = new URLClassLoader(allJars, rootClassLoader) {
@@ -169,27 +217,33 @@ class IsolatedClientLoader(
       val classFileName = name.replaceAll("\\.", "/") + ".class"
       if (name.startsWith(classOf[ClientWrapper].getName)) {
         val bytes = IOUtils.toByteArray(baseClassLoader.getResourceAsStream(classFileName))
-        logDebug(s"custom defining: $name - ${util.Arrays.hashCode(bytes)}")
+        logWarning(s"custom defining: $name - ${util.Arrays.hashCode(bytes)}")
         defineClass(name, bytes, 0, bytes.length)
-      } else if (
-          // name.startsWith("com.jolbox") ||
-          name.startsWith("org.datanucleus") ||
-          name.startsWith("javax.jdo") ||
-          name.startsWith("org.apache.hadoop.hive") ||
-          name.startsWith("org.apache.hive")) {
+      } else if (!isSharedClass(name)) {
+        //assert(name != "java.lang.IllegalThreadStateException")
+        val location = getResource(name.replaceAll("\\.", "/") + ".class")
+        //logWarning(s"loading for hive: $name - $location")
         super.loadClass(name, resolve)
       } else {
-        logDebug(s"delegating: $name")
+        logWarning(s"delegating: $name")
         baseClassLoader.loadClass(name)
       }
     }
   }
 
+  logDebug("Initialize the logger to avoid disaster...")
+  org.apache.hadoop.util.VersionInfo.getBranch
+
+  Thread.currentThread.setContextClassLoader(classLoader)
+
   /** The isolated client interface to Hive. */
-  val client: ClientInterface =
+  val client: ClientInterface = try {
     classLoader
       .loadClass(classOf[ClientWrapper].getName)
       .getConstructors.head
       .newInstance(config)
       .asInstanceOf[ClientInterface]
+  } finally {
+    Thread.currentThread.setContextClassLoader(baseClassLoader)
+  }
 }
