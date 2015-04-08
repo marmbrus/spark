@@ -1,10 +1,8 @@
-package org.apache.spark.sql.hive
+package org.apache.spark.sql.hive.client
 
-import java.io.File
-import javax.jdo.JDOHelper
+import org.scalatest.FunSuite
 
 import org.apache.spark.Logging
-import org.scalatest.FunSuite
 
 class VersionsSuite extends FunSuite with Logging {
   def buildConf(version: Int) = {
@@ -25,10 +23,9 @@ class VersionsSuite extends FunSuite with Logging {
   test("success sanity check") {
     val badClient = IsolatedClientLoader.forVersion(13, buildConf(13)).client
     badClient.createDatabase("default")
-    badClient.close()
   }
 
-  def getNestedMessages(e: Throwable): String = {
+  private def getNestedMessages(e: Throwable): String = {
     var causes = ""
     var lastException = e
     while (lastException != null) {
@@ -38,6 +35,9 @@ class VersionsSuite extends FunSuite with Logging {
     causes
   }
 
+  // Its actually pretty easy to mess things up and have all of your tests "pass" by accidentally
+  // connecting to an auto-populated, in-process metastore.  Let's make sure we are getting the
+  // versions right by forcing a know compatibility failure.
   test("failure sanity check") {
     val e = intercept[Throwable] {
       val badClient = IsolatedClientLoader.forVersion(13, buildConf(12)).client
@@ -54,7 +54,6 @@ class VersionsSuite extends FunSuite with Logging {
     test(s"$version: listTables") {
       client = null
       client = IsolatedClientLoader.forVersion(version, buildConf(version)).client
-      //client = new IsolatedClientLoader(execJar(version), buildConf(version)).client
       client.listTables("default")
     }
 
