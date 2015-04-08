@@ -640,7 +640,7 @@ object SparkSubmit {
 }
 
 /** Provides utility functions to be used inside SparkSubmit. */
-private[deploy] object SparkSubmitUtils {
+private[spark] object SparkSubmitUtils {
 
   // Exposed for testing
   var printStream = SparkSubmit.printStream
@@ -726,10 +726,9 @@ private[deploy] object SparkSubmitUtils {
       artifacts: Array[AnyRef],
       cacheDirectory: File): String = {
     artifacts.map { artifactInfo =>
-      val artifactString = artifactInfo.toString
-      val jarName = artifactString.drop(artifactString.lastIndexOf("!") + 1)
-      cacheDirectory.getAbsolutePath + File.separator +
-        jarName.substring(0, jarName.lastIndexOf(".jar") + 4)
+      val artifact = artifactInfo.asInstanceOf[Artifact].getId
+      val jarName = s"${artifact.getName}-${artifact.getRevision}.jar"
+      cacheDirectory.getAbsolutePath + File.separator + jarName
     }.mkString(",")
   }
 
@@ -854,7 +853,7 @@ private[deploy] object SparkSubmitUtils {
       }
       // retrieve all resolved dependencies
       ivy.retrieve(rr.getModuleDescriptor.getModuleRevisionId,
-        packagesDirectory.getAbsolutePath + File.separator + "[artifact](-[classifier]).[ext]",
+        packagesDirectory.getAbsolutePath + File.separator + "[artifact]-[revision].[ext]",
         retrieveOptions.setConfs(Array(ivyConfName)))
       System.setOut(sysOut)
       resolveDependencyPaths(rr.getArtifacts.toArray, packagesDirectory)

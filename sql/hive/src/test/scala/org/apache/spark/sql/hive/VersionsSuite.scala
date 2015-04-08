@@ -20,22 +20,17 @@ class VersionsSuite extends FunSuite {
       "datanucleus.autoCreateSchema" -> "false")
   }
 
-  def captureOut(f: => Unit): String = {
-    ""
+  test("failure sanity check") {
+    val e = intercept[Exception] {
+      val badClient = IsolatedClientLoader.forVersion(13, buildConf(12)).client
+      badClient.createTable("src")
+    }
+
+    // lol... class loaders
+    assert(e.getClass.getName == "org.apache.hadoop.hive.ql.metadata.HiveException")
   }
 
-  test("basic test") {
-    val badClient = new IsolatedClientLoader(execJar(13), buildConf(13)).client
-  }
-
-  ignore("sanity check") {
-    //intercept[Exception] {
-      val badClient = new IsolatedClientLoader(execJar(13), buildConf(12)).client
-      val badClient2 = new IsolatedClientLoader(execJar(12), buildConf(12)).client
-    //}
-  }
-
-  val versions = Seq()
+  val versions = Seq(12, 13)
 
   versions.foreach { v =>
     import sys.process._
@@ -43,25 +38,25 @@ class VersionsSuite extends FunSuite {
     Seq("/bin/bash", "-c", s"""mysql --host=192.168.59.103 -uroot --password=admin hive$v < /Users/marmbrus/workspace/hive/metastore/scripts/upgrade/mysql/hive-schema-0.$v.0.mysql.sql""").!!
   }
 
-  versions.foreach { version =>
-    val client = new IsolatedClientLoader(execJar(version), buildConf(version)).client
+  var client: ClientInterface = null
 
+  versions.foreach { version =>
     test(s"$version: listTables") {
+      //client = IsolatedClientLoader.forVersion(version, buildConf(version)).client
+      client = new IsolatedClientLoader(execJar(version), buildConf(version)).client
       client.listTables("default")
     }
 
-    /*
-    test(s"$version: createDatabase}") {
+    test(s"$version: createDatabase") {
       client.createDatabase("default")
     }
 
-    test(s"$version: createTable}") {
+    test(s"$version: createTable") {
       client.createTable("src")
     }
 
     test(s"$version: getTable") {
       client.getTable("default", "src")
     }
-    */
   }
 }
