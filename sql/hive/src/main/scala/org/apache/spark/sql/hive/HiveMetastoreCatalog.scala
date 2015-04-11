@@ -32,6 +32,7 @@ import org.apache.hadoop.hive.serde2.{Deserializer, SerDeException}
 import org.apache.hadoop.util.ReflectionUtils
 
 import org.apache.spark.Logging
+import org.apache.spark.sql.hive.client.IsolatedClientLoader
 import org.apache.spark.sql.{SaveMode, AnalysisException, SQLContext}
 import org.apache.spark.sql.catalyst.analysis.{MultiInstanceRelation, NoSuchTableException, Catalog, OverrideCatalog}
 import org.apache.spark.sql.catalyst.expressions._
@@ -51,7 +52,7 @@ private[hive] class HiveMetastoreCatalog(hive: HiveContext) extends Catalog with
   import org.apache.spark.sql.hive.HiveMetastoreTypes._
 
   /** Connection to hive metastore.  Usages should lock on `this`. */
-  protected[hive] val client = Hive.get(hive.hiveconf)
+  protected[hive] val client = IsolatedClientLoader.forVersion(13, hive.conf.getAllConfs).client
 
   /** Usages should lock on `this`. */
   protected[hive] lazy val hiveWarehouse = new Warehouse(hive.hiveconf)
