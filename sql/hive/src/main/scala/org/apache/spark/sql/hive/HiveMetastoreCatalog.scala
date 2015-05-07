@@ -423,15 +423,36 @@ private[hive] class HiveMetastoreCatalog(val client: ClientInterface, hive: Hive
     def apply(plan: LogicalPlan): LogicalPlan = plan transform {
       // Wait until children are resolved.
       case p: LogicalPlan if !p.childrenResolved => p
+      case p: LogicalPlan if p.resolved => p
+      case p @ CreateTableAsSelect(table, child, allowExisting) =>
+        val schema = if (table.schema.size > 0) {
+          table.schema
+        } else {
+          child.output.map {
+            attr => new HiveColumn(attr.name, toMetastoreType(attr.dataType), null)
+          }
+        }
 
-      case CreateTableAsSelect(desc, child, allowExisting) =>
-        if (hive.convertCTAS && !desc.serde.isDefined) {
+        val desc = table.copy(schema = schema)
+
+        // This is a hack, we only take the RC, ORC and Parquet as specific storage
+        // otherwise, we will convert it into Parquet2 when hive.convertCTAS specified
+        val specificStorage = (table.inputFormat.map(format => {
+          // org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat => Parquet
+          // org.apache.hadoop.hive.ql.io.orc.OrcInputFormat               => Orc
+          // org.apache.hadoop.hive.ql.io.RCFileInputFormat                => RCFile
+          // parquet.hive.DeprecatedParquetInputFormat                     => Parquet
+          // TODO configurable?
+          format.contains("Orc") || format.contains("Parquet") || format.contains("RCFile")
+        }).getOrElse(false))
+
+        if (hive.convertCTAS && !specificStorage) {
           // Do the conversion when spark.sql.hive.convertCTAS is true and the query
           // does not specify any storage format (file format and storage handler).
-          if (desc.specifiedDatabase.isDefined) {
+          if (table.specifiedDatabase.isDefined) {
             throw new AnalysisException(
               "Cannot specify database name in a CTAS statement " +
-              "when spark.sql.hive.convertCTAS is set to true.")
+                "when spark.sql.hive.convertCTAS is set to true.")
           }
 
           val mode = if (allowExisting) SaveMode.Ignore else SaveMode.ErrorIfExists
@@ -444,37 +465,13 @@ private[hive] class HiveMetastoreCatalog(val client: ClientInterface, hive: Hive
             child
           )
         } else {
+          val (dbName, tblName) =
+            processDatabaseAndTableName(
+              table.specifiedDatabase.getOrElse(client.currentDatabase), table.name)
           execution.CreateTableAsSelect(
             desc.copy(
-              specifiedDatabase = Option(desc.specifiedDatabase.getOrElse(client.currentDatabase))),
-            child,
-            allowExisting)
-        }
-
-      case p: LogicalPlan if p.resolved => p
-
-      case p @ CreateTableAsSelect(desc, child, allowExisting) =>
-        val (dbName, tblName) = processDatabaseAndTableName(desc.database, desc.name)
-
-        if (hive.convertCTAS) {
-          if (desc.specifiedDatabase.isDefined) {
-            throw new AnalysisException(
-              "Cannot specify database name in a CTAS statement " +
-              "when spark.sql.hive.convertCTAS is set to true.")
-          }
-
-          val mode = if (allowExisting) SaveMode.Ignore else SaveMode.ErrorIfExists
-          CreateTableUsingAsSelect(
-            tblName,
-            hive.conf.defaultDataSourceName,
-            temporary = false,
-            mode,
-            options = Map.empty[String, String],
-            child
-          )
-        } else {
-          execution.CreateTableAsSelect(
-            desc,
+              specifiedDatabase = Some(dbName),
+              name = tblName),
             child,
             allowExisting)
         }
