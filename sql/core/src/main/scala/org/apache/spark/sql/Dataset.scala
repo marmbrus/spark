@@ -105,6 +105,10 @@ class Dataset[T] private[sql](
 
   def groupBy[K : Encoder](func: T => K): GroupedDataset[K, T] = new GroupedDataset(this, func)
 
+  def groupBy(cols: Column*): GroupedDataset[Row, T] = ???
+
+  def groupBy[K : Encoder](col1: String, cols: String*): GroupedDataset[Row, T] = ???
+
 
   /*****************
    * joins *
@@ -139,6 +143,11 @@ class Dataset[T] private[sql](
 trait Aggregator[T]
 
 class GroupedDataset[K : Encoder, T](dataset: Dataset[T], keyFunction: T => K) extends Serializable {
+
+  /** Specify a new encoder for key part of this [[GroupedDataset]]. */
+  def asKey[L : Encoder]: GroupedDataset[L, T] = ???
+  /** Specify a new encoder for value part of this [[GroupedDataset]]. */
+  def asValue[U : Encoder]: GroupedDataset[K, T] = ???
 
   def keys: Dataset[K] = ???
 
