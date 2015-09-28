@@ -33,6 +33,7 @@ import org.apache.spark.unsafe.types.UTF8String
 private[sql] abstract class SQLImplicits {
   protected def _sqlContext: SQLContext
 
+
   /**
    * An implicit conversion that turns a Scala `Symbol` into a [[Column]].
    * @since 1.3.0
@@ -54,6 +55,16 @@ private[sql] abstract class SQLImplicits {
   implicit def localSeqToDataFrameHolder[A <: Product : TypeTag](data: Seq[A]): DataFrameHolder =
   {
     DataFrameHolder(_sqlContext.createDataFrame(data))
+  }
+
+  implicit class DataSeq[A  : Encoder](data: Seq[A]) {
+    def ds = {
+      val enc = implicitly[Encoder[A]]
+      val encoded = data.map { d => enc.toRow(d).copy() }
+      new Dataset[A](
+      _sqlContext.internalCreateDataFrame(
+        _sqlContext.sparkContext.parallelize(encoded), enc.schema))
+    }
   }
 
   // Do NOT add more implicit conversions. They are likely to break source compatibility by

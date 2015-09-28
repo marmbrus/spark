@@ -68,7 +68,7 @@ private[sql] object GroupedData {
 class GroupedData protected[sql](
     df: DataFrame,
     groupingExprs: Seq[Expression],
-    private val groupType: GroupedData.GroupType) {
+    private val groupType: GroupedData.GroupType) extends GroupedDataset(df, identity[Row])(new RowEncoder(df.schema)) {
 
   private[this] def toDF(aggExprs: Seq[Expression]): DataFrame = {
     val aggregates = if (df.sqlContext.conf.dataFrameRetainGroupColumns) {

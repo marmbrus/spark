@@ -113,8 +113,8 @@ private[sql] object DataFrame {
 // TODO: Improve documentation.
 @Experimental
 class DataFrame private[sql](
-    @transient val sqlContext: SQLContext,
-    @DeveloperApi @transient val queryExecution: QueryExecution) extends Serializable {
+    sqlContext: SQLContext,
+    queryExecution: QueryExecution) extends Dataset[Row](sqlContext, queryExecution)(new RowEncoder(queryExecution.analyzed.schema)) with Serializable {
 
   // Note for Spark contributors: if adding or updating any action in `DataFrame`, please make sure
   // you wrap it with `withNewExecutionId` if this actions doesn't call other action.
@@ -256,7 +256,7 @@ class DataFrame private[sql](
    */
   // This is declared with parentheses to prevent the Scala compiler from treating
   // `rdd.toDF("1")` as invoking this toDF and then apply on the returned DataFrame.
-  def toDF(): DataFrame = this
+  override def toDF(): DataFrame = this
 
   /**
    * Returns a new [[DataFrame]] with columns renamed. This can be quite convenient in conversion
@@ -1358,63 +1358,21 @@ class DataFrame private[sql](
    * @group action
    * @since 1.3.0
    */
-  def first(): Row = head()
-
-  /**
-   * Returns a new RDD by applying a function to all rows of this DataFrame.
-   * @group rdd
-   * @since 1.3.0
-   */
-  def map[R: ClassTag](f: Row => R): RDD[R] = rdd.map(f)
-
-  /**
-   * Returns a new RDD by first applying a function to all rows of this [[DataFrame]],
-   * and then flattening the results.
-   * @group rdd
-   * @since 1.3.0
-   */
-  def flatMap[R: ClassTag](f: Row => TraversableOnce[R]): RDD[R] = rdd.flatMap(f)
-
-  /**
-   * Returns a new RDD by applying a function to each partition of this DataFrame.
-   * @group rdd
-   * @since 1.3.0
-   */
-  def mapPartitions[R: ClassTag](f: Iterator[Row] => Iterator[R]): RDD[R] = {
-    rdd.mapPartitions(f)
-  }
-
-  /**
-   * Applies a function `f` to all rows.
-   * @group rdd
-   * @since 1.3.0
-   */
-  def foreach(f: Row => Unit): Unit = withNewExecutionId {
-    rdd.foreach(f)
-  }
-
-  /**
-   * Applies a function f to each partition of this [[DataFrame]].
-   * @group rdd
-   * @since 1.3.0
-   */
-  def foreachPartition(f: Iterator[Row] => Unit): Unit = withNewExecutionId {
-    rdd.foreachPartition(f)
-  }
+  override def first(): Row = head()
 
   /**
    * Returns the first `n` rows in the [[DataFrame]].
    * @group action
    * @since 1.3.0
    */
-  def take(n: Int): Array[Row] = head(n)
+  override def take(n: Int): Array[Row] = head(n)
 
   /**
    * Returns an array that contains all of [[Row]]s in this [[DataFrame]].
    * @group action
    * @since 1.3.0
    */
-  def collect(): Array[Row] = withNewExecutionId {
+  override def collect(): Array[Row] = withNewExecutionId {
     queryExecution.executedPlan.executeCollect()
   }
 
@@ -1461,7 +1419,7 @@ class DataFrame private[sql](
    * @group dfops
    * @since 1.3.0
    */
-  def distinct(): DataFrame = dropDuplicates()
+  override def distinct(): DataFrame = dropDuplicates()
 
   /**
    * @group basic
@@ -1513,7 +1471,7 @@ class DataFrame private[sql](
    * @group rdd
    * @since 1.3.0
    */
-  lazy val rdd: RDD[Row] = {
+   lazy val rdd: RDD[Row] = {
     // use a local variable to make sure the map closure doesn't capture the whole DataFrame
     val schema = this.schema
     queryExecution.toRdd.mapPartitions { rows =>

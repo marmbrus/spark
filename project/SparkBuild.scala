@@ -224,6 +224,11 @@ object SparkBuild extends PomBuild {
   /* Spark SQL Core console settings */
   enable(SQL.settings)(sql)
 
+  enable(Seq(
+    libraryDependencies += "ch.epfl.lamp" %% "scala-records" % "0.4",
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.0.1" cross CrossVersion.full)
+  ))(catalyst)
+
   /* Hive console settings */
   enable(Hive.settings)(hive)
 
@@ -317,10 +322,15 @@ object OldDeps {
 
 object SQL {
   lazy val settings = Seq(
+
+    libraryDependencies += "ch.epfl.lamp" %% "scala-records" % "0.4",
+
+    addCompilerPlugin("org.scalamacros" % "paradise" % "2.0.1" cross CrossVersion.full),
+
     initialCommands in console :=
       """
         |import org.apache.spark.SparkContext
-        |import org.apache.spark.sql.SQLContext
+        |import org.apache.spark.cata.SQLContext
         |import org.apache.spark.sql.catalyst.analysis._
         |import org.apache.spark.sql.catalyst.dsl._
         |import org.apache.spark.sql.catalyst.errors._

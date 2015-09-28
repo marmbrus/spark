@@ -52,7 +52,7 @@ import static org.apache.spark.sql.types.DataTypes.*;
  *
  * Instances of `UnsafeRow` act as pointers to row data stored in this format.
  */
-public final class UnsafeRow extends MutableRow {
+public class UnsafeRow extends MutableRow {
 
   //////////////////////////////////////////////////////////////////////////////
   // Static methods
