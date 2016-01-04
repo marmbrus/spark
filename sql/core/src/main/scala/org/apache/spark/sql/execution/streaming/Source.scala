@@ -42,6 +42,13 @@ trait Source  {
   def restart(): Source
 }
 
+object Source {
+  def toDF(source: Source)(implicit sqlContext: SQLContext): DataFrame = {
+    new DataFrame(sqlContext, StreamingRelation(source))
+  }
+}
+
+
 case class StreamingRelation(source: Source, output: Seq[Attribute]) extends LeafNode {
   override def toString: String = source.toString
 }
