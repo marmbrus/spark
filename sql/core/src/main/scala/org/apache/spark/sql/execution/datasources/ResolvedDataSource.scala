@@ -19,9 +19,6 @@ package org.apache.spark.sql.execution.datasources
 
 import java.util.ServiceLoader
 
-import com.sun.jersey.core.impl.provider.entity.DataSourceProvider
-import org.apache.spark.sql.execution.streaming.{Sink, Source}
-
 import scala.collection.JavaConverters._
 import scala.language.{existentials, implicitConversions}
 import scala.util.{Failure, Success, Try}
@@ -32,13 +29,12 @@ import org.apache.hadoop.util.StringUtils
 import org.apache.spark.Logging
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.sql.{AnalysisException, DataFrame, SaveMode, SQLContext}
+import org.apache.spark.sql.execution.streaming.{Sink, Source}
 import org.apache.spark.sql.sources._
 import org.apache.spark.sql.types.{CalendarIntervalType, StructType}
 import org.apache.spark.util.Utils
 
-
 case class ResolvedDataSource(provider: Class[_], relation: BaseRelation)
-
 
 object ResolvedDataSource extends Logging {
 

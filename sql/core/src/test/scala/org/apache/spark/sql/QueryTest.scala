@@ -22,10 +22,6 @@ import java.util.{Locale, TimeZone}
 import scala.collection.JavaConverters._
 import scala.util.control.NonFatal
 
-import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
-
-import org.apache.spark.sql.catalyst.util._
-import org.apache.spark.sql.catalyst.trees.TreeNode
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate.ImperativeAggregate
 import org.apache.spark.sql.catalyst.plans._

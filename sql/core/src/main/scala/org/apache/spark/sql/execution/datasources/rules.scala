@@ -29,6 +29,7 @@ import org.apache.spark.sql.sources.{BaseRelation, HadoopFsRelation, InsertableR
  * Try to replaces [[UnresolvedRelation]]s with [[ResolvedDataSource]].
  */
 private[sql] class ResolveDataSource(sqlContext: SQLContext) extends Rule[LogicalPlan] {
+
   def apply(plan: LogicalPlan): LogicalPlan = plan resolveOperators {
     case u: UnresolvedRelation if u.tableIdentifier.database.isDefined =>
       try {

@@ -17,16 +17,13 @@
 
 package org.apache.spark.sql
 
-import org.apache.spark.sql.execution.streaming.StreamingRelation
-
 import scala.collection.JavaConverters._
 
-import org.apache.hadoop.util.StringUtils
-
-import org.apache.spark.Logging
 import org.apache.spark.annotation.Experimental
-import org.apache.spark.sql.execution.datasources.{LogicalRelation, ResolvedDataSource}
+import org.apache.spark.sql.execution.datasources.ResolvedDataSource
+import org.apache.spark.sql.execution.streaming.StreamingRelation
 import org.apache.spark.sql.types.StructType
+import org.apache.spark.Logging
 
 /**
  * :: Experimental ::

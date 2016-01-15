@@ -20,7 +20,7 @@ package org.apache.spark.streaming.kafka
 import java.util.Properties
 
 import scala.collection.Map
-import scala.reflect.{ClassTag, classTag}
+import scala.reflect.{classTag, ClassTag}
 
 import kafka.consumer.{Consumer, ConsumerConfig, ConsumerConnector, KafkaStream}
 import kafka.serializer.Decoder
