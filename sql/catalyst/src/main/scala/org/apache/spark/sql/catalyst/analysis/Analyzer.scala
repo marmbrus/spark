@@ -1214,6 +1214,8 @@ object CleanupAliases extends Rule[LogicalPlan] {
       Window(projectList, cleanedWindowExprs, partitionSpec.map(trimAliases),
         orderSpec.map(trimAliases(_).asInstanceOf[SortOrder]), child)
 
+    // Operators that operate on objects should only have expressions from encoders, which should
+    // never have extra aliases.
     case o: ObjectOperator => o
 
     case other =>
@@ -1249,26 +1251,22 @@ object ResolveUpCast extends Rule[LogicalPlan] {
   }
 
   def apply(plan: LogicalPlan): LogicalPlan = {
-    plan transform {
-      case o: ObjectOperator => o
-      case other =>
-        other transformExpressions {
-          case u@UpCast(child, _, _) if !child.resolved => u
+    plan transformAllExpressions {
+      case u @ UpCast(child, _, _) if !child.resolved => u
 
-          case UpCast(child, dataType, walkedTypePath) => (child.dataType, dataType) match {
-            case (from: NumericType, to: DecimalType) if !to.isWiderThan(from) =>
-              fail(child, to, walkedTypePath)
-            case (from: DecimalType, to: NumericType) if !from.isTighterThan(to) =>
-              fail(child, to, walkedTypePath)
-            case (from, to) if illegalNumericPrecedence(from, to) =>
-              fail(child, to, walkedTypePath)
-            case (TimestampType, DateType) =>
-              fail(child, DateType, walkedTypePath)
-            case (StringType, to: NumericType) =>
-              fail(child, to, walkedTypePath)
-            case _ => Cast(child, dataType)
-          }
-        }
+      case UpCast(child, dataType, walkedTypePath) => (child.dataType, dataType) match {
+        case (from: NumericType, to: DecimalType) if !to.isWiderThan(from) =>
+          fail(child, to, walkedTypePath)
+        case (from: DecimalType, to: NumericType) if !from.isTighterThan(to) =>
+          fail(child, to, walkedTypePath)
+        case (from, to) if illegalNumericPrecedence(from, to) =>
+          fail(child, to, walkedTypePath)
+        case (TimestampType, DateType) =>
+          fail(child, DateType, walkedTypePath)
+        case (StringType, to: NumericType) =>
+          fail(child, to, walkedTypePath)
+        case _ => Cast(child, dataType)
+      }
     }
   }
 }
