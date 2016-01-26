@@ -24,7 +24,7 @@ import scala.collection.mutable.ArrayBuffer
 import org.apache.hadoop.fs.{FileStatus, FileSystem, Path}
 
 import org.apache.spark.Logging
-import org.apache.spark.sql.SQLContext
+import org.apache.spark.sql.{DataFrame, SQLContext}
 import org.apache.spark.sql.types.{StringType, StructType}
 import org.apache.spark.util.collection.OpenHashSet
 
@@ -32,15 +32,16 @@ import org.apache.spark.util.collection.OpenHashSet
  * A very simple source that reads text files from the given directory as they appear.
  */
 class FileStreamSource(
-    val sqlContext: SQLContext,
-    val metadataPath: String,
-    val path: String) extends Source with Logging {
+    sqlContext: SQLContext,
+    metadataPath: String,
+    path: String,
+    dataSchema: Option[StructType],
+    dataFrameBuilder: Array[String] => DataFrame) extends Source with Logging {
 
   import sqlContext.implicits._
 
   /** Returns the schema of the data from this source */
-  override def schema: StructType =
-    StructType(Nil).add("value", StringType)
+  override def schema: StructType = dataSchema.getOrElse(new StructType().add("value", StringType))
 
   /** Returns the maximum offset that can be retrieved from the source. */
   def fetchMaxOffset(): LongOffset = synchronized {
@@ -84,14 +85,14 @@ class FileStreamSource(
           .as[String]
           .collect()
       logDebug(s"Streaming ${files.mkString(", ")}")
-      Some(new Batch(end, sqlContext.read.text(files: _*)))
+      Some(new Batch(end, dataFrameBuilder(files)))
     } else {
       None
     }
   }
 
   def restart(): FileStreamSource = {
-    new FileStreamSource(sqlContext, metadataPath, path)
+    new FileStreamSource(sqlContext, metadataPath, path, dataSchema, dataFrameBuilder)
   }
 
   private def sparkContext = sqlContext.sparkContext

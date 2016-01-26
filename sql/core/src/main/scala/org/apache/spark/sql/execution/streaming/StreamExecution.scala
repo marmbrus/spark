@@ -91,6 +91,13 @@ class StreamExecution(
     }
   }
   microBatchThread.setDaemon(true)
+  microBatchThread.setUncaughtExceptionHandler(
+    new UncaughtExceptionHandler {
+      override def uncaughtException(t: Thread, e: Throwable): Unit = {
+        e.printStackTrace()
+        streamDeathCause = e
+      }
+    })
   microBatchThread.start()
 
   @volatile
@@ -98,12 +105,6 @@ class StreamExecution(
   @volatile
   private[sql] var streamDeathCause: Throwable = null
 
-  microBatchThread.setUncaughtExceptionHandler(
-    new UncaughtExceptionHandler {
-      override def uncaughtException(t: Thread, e: Throwable): Unit = {
-        streamDeathCause = e
-      }
-    })
 
   /**
    * Checks to see if any new data is present in any of the sources.  When new data is available,

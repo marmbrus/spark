@@ -43,7 +43,6 @@ import org.apache.spark.util.SerializableConfiguration
 class DefaultSource
     extends HadoopFsRelationProvider
     with DataSourceRegister
-    with StreamSourceProvider
     with StreamSinkProvider {
 
   override def createRelation(
@@ -68,16 +67,6 @@ class DefaultSource
       throw new AnalysisException(
         s"Text data source supports only a string column, but you have ${tpe.simpleString}.")
     }
-  }
-
-  override def createSource(
-      sqlContext: SQLContext,
-      parameters: Map[String, String],
-      schema: Option[StructType]): Source = {
-    val path = parameters("path")
-    val metadataPath = parameters.getOrElse("metadataPath", s"$path/_metadata")
-
-    new FileStreamSource(sqlContext, metadataPath, path)
   }
 
   override def createSink(sqlContext: SQLContext, parameters: Map[String, String]): Sink = {
