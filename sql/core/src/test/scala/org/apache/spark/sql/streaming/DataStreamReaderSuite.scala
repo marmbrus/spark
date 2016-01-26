@@ -28,8 +28,8 @@ class DataStreamReaderSuite extends StreamTest with SharedSQLContext {
   import testImplicits._
 
   test("read from text files") {
-    val src = Utils.createDirectory("streaming.src")
-    val dest = Utils.createDirectory("streaming.dest")
+    val src = Utils.createTempDir("streaming.src")
+    val dest = Utils.createTempDir("streaming.dest")
 
     val df =
       sqlContext
@@ -56,5 +56,40 @@ class DataStreamReaderSuite extends StreamTest with SharedSQLContext {
     checkAnswer(output, "keep2", "keep3")
 
     runningQuery.stop()
+    Utils.deleteRecursively(src)
+    Utils.deleteRecursively(dest)
+  }
+
+  test("read from json files") {
+    val src = Utils.createTempDir("streaming.src")
+    val dest = Utils.createTempDir("streaming.dest")
+
+    val df =
+      sqlContext
+        .streamFrom
+        .format("json")
+        .open(src.getCanonicalPath)
+
+    val filtered = df.filter($"value" contains "keep")
+
+    val runningQuery =
+      filtered
+        .streamTo
+        .format("text")
+        .start(dest.getCanonicalPath)
+
+    runningQuery.clearBatchMarker()
+
+    // Add some data
+    stringToFile(new File(src, "1"), "{'c': 'drop1'}\n{'c': 'keep2'}\n{'c': 'keep3'}")
+
+    runningQuery.awaitBatchCompletion()
+
+    val output = sqlContext.read.text(dest.getCanonicalPath).as[String]
+    checkAnswer(output, "keep2", "keep3")
+
+    runningQuery.stop()
+    Utils.deleteRecursively(src)
+    Utils.deleteRecursively(dest)
   }
 }
